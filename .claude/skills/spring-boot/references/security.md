@@ -456,6 +456,69 @@ public class OAuth2ResourceServerConfig {
 }
 ```
 
+## SSL Bundles & Certificate Hot Reload
+
+Spring Boot 3.1+ provides unified SSL configuration via SSL Bundles, with automatic reload when certificates change on disk.
+
+### PEM-based SSL Bundle (e.g., cert-manager on Kubernetes)
+
+```yaml
+# application.yml
+spring:
+  ssl:
+    bundle:
+      pem:
+        server:
+          reload-on-update: true
+          keystore:
+            certificate: /etc/ssl/certs/tls.crt
+            private-key: /etc/ssl/certs/tls.key
+          truststore:
+            certificate: /etc/ssl/certs/ca.crt
+
+server:
+  port: 8443
+  ssl:
+    bundle: server
+```
+
+### Applying SSL Bundles to RestClient
+
+```java
+@Configuration
+public class RestClientSslConfig {
+
+    @Bean
+    public RestClient secureRestClient(RestClient.Builder builder, SslBundles sslBundles) {
+        return builder
+            .baseUrl("https://internal-service")
+            .apply(b -> b.requestFactory(
+                ClientHttpRequestFactories.get(
+                    ClientHttpRequestFactorySettings.DEFAULTS
+                        .withSslBundle(sslBundles.getBundle("server"))
+                )))
+            .build();
+    }
+}
+```
+
+### JKS-based SSL Bundle
+
+```yaml
+spring:
+  ssl:
+    bundle:
+      jks:
+        server:
+          reload-on-update: true
+          keystore:
+            location: classpath:keystore.p12
+            password: ${KEYSTORE_PASSWORD}
+            type: PKCS12
+```
+
+When `reload-on-update: true` is set, Spring Boot watches the certificate files and automatically reloads the SSL context when they change — no application restart required. This works seamlessly with Kubernetes cert-manager, which writes renewed certificates to the mounted Secret volume.
+
 ## Quick Reference
 
 | Annotation | Purpose |
@@ -471,7 +534,8 @@ public class OAuth2ResourceServerConfig {
 ## Security Best Practices
 
 - Always use HTTPS in production
-- Store JWT secret in environment variables
+- Use SSL Bundles with `reload-on-update: true` for zero-downtime certificate rotation
+- Store JWT secret in environment variables or mounted secrets
 - Use strong password encoding (BCrypt with strength 12+)
 - Implement token refresh mechanism
 - Add rate limiting to authentication endpoints

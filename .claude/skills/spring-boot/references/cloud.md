@@ -473,6 +473,34 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
 ```
 
+### Config Tree for Mounted Secrets
+
+Instead of env vars, read secrets from mounted files using Config Tree (more secure — secrets don't leak via `/proc/environ`):
+
+```yaml
+# application.yml
+spring:
+  config:
+    import: "optional:configtree:/run/secrets/"
+```
+
+With a Kubernetes Secret mounted at `/run/secrets/`, a key `spring.datasource.password` becomes a file at `/run/secrets/spring.datasource.password`. Spring Boot reads the file content as the property value.
+
+```yaml
+# Kubernetes volume mount for Config Tree
+spec:
+  containers:
+  - name: app
+    volumeMounts:
+    - name: secrets
+      mountPath: /run/secrets
+      readOnly: true
+  volumes:
+  - name: secrets
+    secret:
+      secretName: user-service-secrets
+```
+
 ### Deployment Manifest
 
 ```yaml
@@ -553,6 +581,92 @@ spec:
   - port: 80
     targetPort: 8080
   type: ClusterIP
+```
+
+### Ingress TLS with cert-manager
+
+cert-manager automatically provisions and renews TLS certificates on Kubernetes.
+
+```yaml
+# ClusterIssuer for Let's Encrypt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+```
+
+```yaml
+# Ingress with automatic TLS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: user-service-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.example.com
+    secretName: user-service-tls
+  rules:
+  - host: api.example.com
+    http:
+      paths:
+      - path: /api/users
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 80
+```
+
+cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see security reference).
+
+### Certificate for mTLS between services
+
+```yaml
+# cert-manager Certificate for pod-level TLS
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: user-service-cert
+spec:
+  secretName: user-service-tls-pod
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+  dnsNames:
+  - user-service
+  - user-service.default.svc.cluster.local
+  duration: 720h
+  renewBefore: 48h
+```
+
+```yaml
+# Mount into pod for Spring Boot SSL Bundle
+spec:
+  containers:
+  - name: user-service
+    volumeMounts:
+    - name: tls-certs
+      mountPath: /etc/ssl/certs
+      readOnly: true
+  volumes:
+  - name: tls-certs
+    secret:
+      secretName: user-service-tls-pod
 ```
 
 ## Virtual Threads
@@ -771,4 +885,7 @@ skaffold run -p production
 | **Native Image** | Fast startup, low memory with GraalVM |
 | **Paketo Buildpacks** | Build OCI images without Dockerfile (Spring Boot plugin) |
 | **Skaffold** | Local Kubernetes development loop (build → deploy → watch) |
+| **Config Tree** | Read secrets from mounted files instead of env vars |
+| **cert-manager** | Automatic TLS certificate provisioning and renewal on K8s |
+| **SSL Bundles** | Unified SSL config with hot reload (see security reference) |
 | **Kubernetes** | Container orchestration, ConfigMap/Secret, probes, Prometheus |
