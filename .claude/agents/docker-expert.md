@@ -68,6 +68,7 @@ Spring Boot Maven plugin builds OCI images using Paketo Buildpacks - no Dockerfi
             <name>${project.artifactId}:${project.version}</name>
             <env>
                 <BP_JVM_VERSION>21</BP_JVM_VERSION>
+                <BPE_JAVA_TOOL_OPTIONS>-XX:MaxRAMPercentage=75.0</BPE_JAVA_TOOL_OPTIONS>
             </env>
         </image>
     </configuration>

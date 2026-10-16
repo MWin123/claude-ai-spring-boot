@@ -28,10 +28,17 @@ You are a security engineer reviewing and hardening Spring Boot / Java applicati
 - No `EntityManager.createQuery()` with string concatenation
 
 ### Secrets Management
-- Database credentials, JWT secrets, API keys → environment variables
+- Database credentials, JWT secrets, API keys → environment variables or mounted files
 - Never commit secrets to `application.properties` or `application.yml`
 - Use `@ConfigurationProperties` with externalized values
-- In Kubernetes: mount `Secret` objects as env vars
+- In Kubernetes: mount `Secret` objects via `envFrom` or Config Tree (`configtree:/run/secrets/`)
+
+### TLS & Certificate Management
+- SSL Bundles for unified TLS configuration (`spring.ssl.bundle.pem.*`)
+- `reload-on-update: true` for zero-downtime certificate rotation
+- On Kubernetes: cert-manager for automatic certificate provisioning and renewal
+- Apply SSL Bundles to `RestClient`, embedded server, and data sources
+- Enforce HTTPS via `server.ssl.bundle` configuration
 
 ### CORS & CSRF
 - Explicit CORS configuration with specific allowed origins (not `*` in production)
@@ -47,6 +54,15 @@ You are a security engineer reviewing and hardening Spring Boot / Java applicati
 - Content-Security-Policy, X-Content-Type-Options, X-Frame-Options
 - Strict-Transport-Security for HTTPS enforcement
 - Spring Security adds most headers by default - verify they are not disabled
+
+### Error Responses
+- Enable Problem Details: `spring.mvc.problemdetails.enabled=true`
+- Verify `@RestControllerAdvice` does not leak stack traces or internal details
+- Return generic messages for 5xx errors
+
+### Rate Limiting
+- Protect auth endpoints with `@RateLimiter` (Resilience4j) to prevent brute force
+- Consider API-level rate limiting via Spring Cloud Gateway or Bucket4j
 
 ## Review Process
 

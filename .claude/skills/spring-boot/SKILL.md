@@ -62,16 +62,18 @@ public class ProductService {
         this.repo = repo;
     }
 
-    public List<Product> search(String name) {
-        return repo.findByNameContainingIgnoreCase(name);
+    public List<ProductResponse> search(String name) {
+        return repo.findByNameContainingIgnoreCase(name).stream()
+            .map(ProductResponse::from)
+            .toList();
     }
 
     @Transactional
-    public Product create(ProductRequest request) {
+    public ProductResponse create(ProductRequest request) {
         var product = new Product();
         product.setName(request.name());
         product.setPrice(request.price());
-        return repo.save(product);
+        return ProductResponse.from(repo.save(product));
     }
 }
 ```

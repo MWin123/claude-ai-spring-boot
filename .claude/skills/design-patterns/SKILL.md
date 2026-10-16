@@ -133,9 +133,13 @@ public interface PaymentStrategy {
 public class CreditCardPayment implements PaymentStrategy {
     private final String cardNumber;
 
+    public CreditCardPayment(String cardNumber) {
+        this.cardNumber = cardNumber;
+    }
+
     @Override
     public void pay(BigDecimal amount) {
-        System.out.println("Paid " + amount + " with card");
+        System.out.println("Paid " + amount + " with card " + cardNumber);
     }
 }
 

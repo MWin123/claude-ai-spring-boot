@@ -79,6 +79,7 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+
 ---
 apiVersion: v1
 kind: Service
@@ -146,7 +147,7 @@ management:
     health:
       probes:
         enabled: true
-      show-details: always
+      show-details: when-authorized
   health:
     livenessState:
       enabled: true
