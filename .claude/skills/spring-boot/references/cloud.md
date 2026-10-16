@@ -214,27 +214,30 @@ spring:
 ```java
 @Service
 public class ExternalApiService {
-    private final WebClient webClient;
+    private static final Logger log = LoggerFactory.getLogger(ExternalApiService.class);
 
-    public ExternalApiService(WebClient webClient) {
-        this.webClient = webClient;
+    private final RestClient restClient;
+
+    public ExternalApiService(RestClient.Builder builder) {
+        this.restClient = builder
+            .baseUrl("https://api.external.com")
+            .build();
     }
 
     @CircuitBreaker(name = "externalApi", fallbackMethod = "getFallbackData")
     @Retry(name = "externalApi")
     @RateLimiter(name = "externalApi")
-    public Mono<ExternalData> getData(String id) {
-        return webClient
+    public ExternalData getData(String id) {
+        return restClient
             .get()
             .uri("/data/{id}", id)
             .retrieve()
-            .bodyToMono(ExternalData.class)
-            .timeout(Duration.ofSeconds(3));
+            .body(ExternalData.class);
     }
 
-    private Mono<ExternalData> getFallbackData(String id, Exception e) {
+    private ExternalData getFallbackData(String id, Exception e) {
         log.warn("Fallback triggered for id: {}, error: {}", id, e.getMessage());
-        return Mono.just(new ExternalData(id, "Fallback data", LocalDateTime.now()));
+        return new ExternalData(id, "Fallback data", LocalDateTime.now());
     }
 }
 
@@ -359,20 +362,20 @@ public class UserServiceLoadBalancerConfig {
 
 @Service
 public class UserClientService {
-    private final WebClient.Builder webClientBuilder;
+    private final RestClient restClient;
 
-    public UserClientService(WebClient.Builder webClientBuilder) {
-        this.webClientBuilder = webClientBuilder;
+    public UserClientService(RestClient.Builder builder) {
+        this.restClient = builder
+            .baseUrl("http://user-service")
+            .build();
     }
 
-    public Mono<User> getUser(Long id) {
-        return webClientBuilder
-            .baseUrl("http://user-service")
-            .build()
+    public User getUser(Long id) {
+        return restClient
             .get()
             .uri("/users/{id}", id)
             .retrieve()
-            .bodyToMono(User.class);
+            .body(User.class);
     }
 }
 ```

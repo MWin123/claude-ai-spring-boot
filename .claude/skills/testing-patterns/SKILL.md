@@ -215,6 +215,7 @@ class ProductRepositoryTest {
 
 ```java
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
 @Testcontainers
 @ActiveProfiles("test")
 class ProductIntegrationTest {
@@ -224,7 +225,7 @@ class ProductIntegrationTest {
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Autowired
-    private TestRestTemplate restTemplate;
+    private RestTestClient restTestClient;
 
     @Autowired
     private ProductRepository productRepository;
@@ -239,25 +240,36 @@ class ProductIntegrationTest {
     void crudFlow() {
         // Create
         var request = new ProductRequest("Widget", new BigDecimal("10.00"));
-        ResponseEntity<Product> createResponse = restTemplate
-            .postForEntity("/api/v1/products", request, Product.class);
+        var created = restTestClient.post()
+            .uri("/api/v1/products")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .exchange()
+            .expectStatus().isCreated()
+            .expectBody(Product.class)
+            .returnResult()
+            .getResponseBody();
 
-        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        Long id = createResponse.getBody().getId();
+        Long id = created.getId();
 
         // Read
-        ResponseEntity<Product> getResponse = restTemplate
-            .getForEntity("/api/v1/products/" + id, Product.class);
-
-        assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(getResponse.getBody().getName()).isEqualTo("Widget");
+        restTestClient.get()
+            .uri("/api/v1/products/{id}", id)
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody(Product.class)
+            .value(product -> assertThat(product.getName()).isEqualTo("Widget"));
 
         // Delete
-        restTemplate.delete("/api/v1/products/" + id);
+        restTestClient.delete()
+            .uri("/api/v1/products/{id}", id)
+            .exchange()
+            .expectStatus().isNoContent();
 
-        ResponseEntity<Void> afterDelete = restTemplate
-            .getForEntity("/api/v1/products/" + id, Void.class);
-        assertThat(afterDelete.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        restTestClient.get()
+            .uri("/api/v1/products/{id}", id)
+            .exchange()
+            .expectStatus().isNotFound();
     }
 }
 ```

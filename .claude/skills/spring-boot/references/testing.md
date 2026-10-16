@@ -74,12 +74,13 @@ class UserServiceTest {
 
 ```java
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
 @ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class UserIntegrationTest {
 
     @Autowired
-    private TestRestTemplate restTemplate;
+    private RestTestClient restTestClient;
 
     @Autowired
     private UserRepository userRepository;
@@ -101,18 +102,18 @@ class UserIntegrationTest {
             25
         );
 
-        // When
-        ResponseEntity<UserResponse> response = restTemplate.postForEntity(
-            "/api/v1/users",
-            request,
-            UserResponse.class
-        );
-
-        // Then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().email()).isEqualTo(request.email());
-        assertThat(response.getHeaders().getLocation()).isNotNull();
+        // When & Then
+        restTestClient.post()
+            .uri("/api/v1/users")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .exchange()
+            .expectStatus().isCreated()
+            .expectHeader().exists("Location")
+            .expectBody(UserResponse.class)
+            .value(response -> {
+                assertThat(response.email()).isEqualTo(request.email());
+            });
     }
 
     @Test
@@ -127,17 +128,15 @@ class UserIntegrationTest {
             15
         );
 
-        // When
-        ResponseEntity<ValidationErrorResponse> response = restTemplate.postForEntity(
-            "/api/v1/users",
-            request,
-            ValidationErrorResponse.class
-        );
-
-        // Then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().errors()).isNotEmpty();
+        // When & Then
+        restTestClient.post()
+            .uri("/api/v1/users")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .exchange()
+            .expectStatus().isBadRequest()
+            .expectBody()
+            .jsonPath("$.errors").isNotEmpty();
     }
 }
 ```
@@ -553,6 +552,7 @@ public class TestDataFactory {
 | Annotation | Purpose |
 |------------|---------|
 | `@SpringBootTest` | Full application context integration test |
+| `@AutoConfigureRestTestClient` | Auto-configure `RestTestClient` for integration tests |
 | `@WebMvcTest` | Test MVC controllers with mocked services |
 | `@WebFluxTest` | Test reactive controllers |
 | `@DataJpaTest` | Test JPA repositories with in-memory database |

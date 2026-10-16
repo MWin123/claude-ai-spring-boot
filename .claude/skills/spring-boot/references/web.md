@@ -226,51 +226,50 @@ public class UniqueEmailValidator implements ConstraintValidator<UniqueEmail, St
 }
 ```
 
-## WebClient for External APIs
+## RestClient for External APIs
 
 ```java
 @Configuration
-public class WebClientConfig {
+public class RestClientConfig {
+
     @Bean
-    public WebClient webClient(WebClient.Builder builder) {
+    public RestClient restClient(RestClient.Builder builder) {
         return builder
             .baseUrl("https://api.example.com")
             .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .filter(logRequest())
+            .requestInterceptor((request, body, execution) -> {
+                log.info("Request: {} {}", request.getMethod(), request.getURI());
+                return execution.execute(request, body);
+            })
             .build();
-    }
-
-    private ExchangeFilterFunction logRequest() {
-        return ExchangeFilterFunction.ofRequestProcessor(request -> {
-            log.info("Request: {} {}", request.method(), request.url());
-            return Mono.just(request);
-        });
     }
 }
 
 @Service
 public class ExternalApiService {
-    private final WebClient webClient;
+    private final RestClient restClient;
 
-    public ExternalApiService(WebClient webClient) {
-        this.webClient = webClient;
+    public ExternalApiService(RestClient restClient) {
+        this.restClient = restClient;
     }
-    
-    public Mono<ExternalDataResponse> fetchData(String id) {
-        return webClient
+
+    public ExternalDataResponse fetchData(String id) {
+        return restClient
             .get()
             .uri("/data/{id}", id)
             .retrieve()
-            .onStatus(HttpStatusCode::is4xxClientError, response ->
-                Mono.error(new ResourceNotFoundException("External resource not found")))
-            .onStatus(HttpStatusCode::is5xxServerError, response ->
-                Mono.error(new ServiceUnavailableException("External service unavailable")))
-            .bodyToMono(ExternalDataResponse.class)
-            .timeout(Duration.ofSeconds(5))
-            .retry(3);
+            .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
+                throw new ResourceNotFoundException("External resource not found");
+            })
+            .onStatus(HttpStatusCode::is5xxServerError, (request, response) -> {
+                throw new ServiceUnavailableException("External service unavailable");
+            })
+            .body(ExternalDataResponse.class);
     }
 }
 ```
+
+Use `RestClient` for blocking calls (default with virtual threads). Use `WebClient` only for reactive/streaming scenarios.
 
 ## CORS Configuration
 
