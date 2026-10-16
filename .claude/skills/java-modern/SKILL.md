@@ -255,6 +255,32 @@ mockMvc.perform(post("/api/v1/products")
 
 ---
 
+## Sequenced Collections (Java 21)
+
+`SequencedCollection` adds `getFirst()`, `getLast()`, and `reversed()` to ordered collections.
+
+```java
+// ❌ Before Java 21
+String first = list.get(0);
+String last = list.get(list.size() - 1);
+
+// ✅ Java 21+
+String first = list.getFirst();
+String last = list.getLast();
+
+// Reversed view (no copy)
+for (var item : list.reversed()) {
+    process(item);
+}
+
+// Works with all ordered collections: List, Deque, SortedSet, LinkedHashSet, LinkedHashMap
+SortedSet<User> users = userRepository.findTopByOrderByCreatedAtDesc();
+User newest = users.getFirst();
+User oldest = users.getLast();
+```
+
+---
+
 ## Quick Decision Guide
 
 | Feature | Use For | Avoid When |
@@ -264,3 +290,4 @@ mockMvc.perform(post("/api/v1/products")
 | **Pattern matching switch** | Handling sealed types, replacing if-else chains | Simple equality checks |
 | **Virtual threads** | High-concurrency blocking I/O | CPU-bound work, `synchronized` over I/O |
 | **Text blocks** | JPQL queries, JSON test data, SQL | Single-line strings |
+| **SequencedCollections** | First/last access on ordered collections | Unordered sets/maps |

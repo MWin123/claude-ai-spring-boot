@@ -45,6 +45,23 @@ src/main/java/pl/piomin/services/
 - `@HttpExchange` interfaces for declarative HTTP clients (replaces OpenFeign for simple cases)
 - OpenFeign remains a valid option when used with service discovery (Eureka/Consul) and load balancing
 
+## Default application.yml
+
+Every new app should include these production-ready defaults:
+
+```yaml
+spring:
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+server:
+  shutdown: graceful
+spring.lifecycle.timeout-per-shutdown-phase: 30s
+```
+
 ## Workflow
 
 1. Understand requirements, identify entities, APIs, and service boundaries
@@ -52,7 +69,7 @@ src/main/java/pl/piomin/services/
 3. Implement service layer with transaction management
 4. Build REST controllers with validation
 5. Add global exception handler
-6. Write unit tests (MockitoExtension) and integration tests (@SpringBootTest)
-7. Configure `application.yml`, Docker Compose, CircleCI pipeline
-8. Run `./mvnw test` and verify all tests pass
+6. Write unit tests (MockitoExtension) and integration tests (@SpringBootTest + Testcontainers with `@ServiceConnection`)
+7. Configure `application.yml` (include defaults above), Docker Compose, CircleCI pipeline
+8. Run `./mvnw verify` and confirm all tests pass
 9. Update README.md

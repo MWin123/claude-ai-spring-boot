@@ -28,7 +28,7 @@ Each skill folder contains:
 | Skill | Description |
 |-------|-------------|
 | [java-modern](java-modern/) | Java 21+ features for Spring Boot - records, sealed classes, pattern matching, virtual threads, text blocks |
-| [jpa-patterns](jpa-patterns/) | JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries, Hibernate 6) |
+| [jpa-patterns](jpa-patterns/) | JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries) |
 | [logging-patterns](logging-patterns/) | Structured logging (JSON), SLF4J, MDC, AI-friendly formats for Spring Boot 4.x |
 
 ## Adding a New Skill

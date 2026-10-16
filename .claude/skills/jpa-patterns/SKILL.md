@@ -123,7 +123,7 @@ spring:
 logging:
   level:
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.orm.jdbc.bind: TRACE
 ```
 
 ---
@@ -332,19 +332,19 @@ public class ProductService {
 
 ---
 
-## Hibernate 6 Features
+## Modern Hibernate Features
 
-### Jakarta Persistence (JPA 3.1)
+### Jakarta Persistence
 
 ```java
-// Hibernate 6 uses jakarta.persistence.* (not javax.persistence.*)
+// Always use jakarta.persistence.* (not javax.persistence.*)
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 ```
 
-### Improved UUID Generation
+### UUID Generation
 
 ```java
 @Entity
@@ -363,7 +363,7 @@ public class Event {
 ### Soft Delete
 
 ```java
-// Hibernate 6.4+ - built-in soft delete support
+// Built-in soft delete support
 @Entity
 @SoftDelete  // Adds 'deleted' boolean column, filters automatically
 public class Customer {
@@ -387,7 +387,7 @@ public class Product {
 ### Record as DTO in Queries
 
 ```java
-// Hibernate 6 supports records natively in JPQL constructor expressions
+// Records work natively in JPQL constructor expressions
 public record ProductSummary(Long id, String name, BigDecimal price) {}
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
@@ -445,5 +445,5 @@ public interface UserRepository extends JpaRepository<User, Long> {
 | Concurrent updates | `@Version` + optimistic locking |
 | Unbounded result set | Pagination with `PageRequest` |
 | Need only few columns | DTO projection or interface projection |
-| Soft delete required | `@SoftDelete` (Hibernate 6.4+) |
+| Soft delete required | `@SoftDelete` |
 | UUID primary key | `@GeneratedValue(strategy = GenerationType.UUID)` |
