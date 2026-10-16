@@ -284,7 +284,6 @@ public class JpaAuditingConfig {
 
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)
-@Getter @Setter
 public abstract class AuditableEntity {
 
     @CreatedDate
@@ -302,6 +301,18 @@ public abstract class AuditableEntity {
     @LastModifiedBy
     @Column(nullable = false, length = 100)
     private String updatedBy;
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getUpdatedBy() { return updatedBy; }
+    public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
 }
 ```
 
@@ -341,11 +352,15 @@ List<UserSummaryDto> dtos = userRepository.findAllBy(UserSummaryDto.class);
 
 ```java
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class UserQueryService {
     private final UserRepository userRepository;
     private final EntityManager entityManager;
+
+    public UserQueryService(UserRepository userRepository, EntityManager entityManager) {
+        this.userRepository = userRepository;
+        this.entityManager = entityManager;
+    }
 
     // N+1 problem solved with JOIN FETCH
     @Query("SELECT DISTINCT u FROM User u " +

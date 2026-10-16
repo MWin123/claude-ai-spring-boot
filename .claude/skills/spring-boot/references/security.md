@@ -78,7 +78,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
-            @NonNull HttpServletRequest response,
+            @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
@@ -378,9 +378,12 @@ public class AuthenticationService {
 
 ```java
 @Service
-@RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @PreAuthorize("hasRole('ADMIN')")
     public List<User> getAllUsers() {
