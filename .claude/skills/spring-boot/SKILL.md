@@ -1,6 +1,6 @@
 ---
 name: spring-boot
-description: Spring Boot 3.x development - REST APIs, JPA, Security, Testing, and Cloud-native patterns. Use for building enterprise Java applications with Spring Boot.
+description: Spring Boot 4.x development - REST APIs, JPA, Security, Testing, and Cloud-native patterns. Use for building enterprise Java applications with Spring Boot.
 metadata:
   version: "2.0.0"
   domain: backend
@@ -12,7 +12,7 @@ metadata:
 
 # Spring Boot Skill
 
-Enterprise Spring Boot 3.x development with focus on clean architecture and production-ready code.
+Enterprise Spring Boot 4.x development with focus on clean architecture and production-ready code.
 
 ## Core Workflow
 
@@ -62,16 +62,18 @@ public class ProductService {
         this.repo = repo;
     }
 
-    public List<Product> search(String name) {
-        return repo.findByNameContainingIgnoreCase(name);
+    public List<ProductResponse> search(String name) {
+        return repo.findByNameContainingIgnoreCase(name).stream()
+            .map(ProductResponse::from)
+            .toList();
     }
 
     @Transactional
-    public Product create(ProductRequest request) {
+    public ProductResponse create(ProductRequest request) {
         var product = new Product();
         product.setName(request.name());
         product.setPrice(request.price());
-        return repo.save(product);
+        return ProductResponse.from(repo.save(product));
     }
 }
 ```
@@ -89,24 +91,30 @@ public class ProductController {
     }
 
     @GetMapping
-    public List<Product> search(@RequestParam(defaultValue = "") String name) {
+    public List<ProductResponse> search(@RequestParam(defaultValue = "") String name) {
         return service.search(name);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Product create(@Valid @RequestBody ProductRequest request) {
+    public ProductResponse create(@Valid @RequestBody ProductRequest request) {
         return service.create(request);
     }
 }
 ```
 
-### DTO (Record)
+### DTOs (Records)
 ```java
 public record ProductRequest(
     @NotBlank String name,
     @DecimalMin("0.0") BigDecimal price
 ) {}
+
+public record ProductResponse(Long id, String name, BigDecimal price) {
+    public static ProductResponse from(Product product) {
+        return new ProductResponse(product.getId(), product.getName(), product.getPrice());
+    }
+}
 ```
 
 ### Global Exception Handler
@@ -138,13 +146,14 @@ class ProductControllerTest {
 
     @Test
     void createProduct_validRequest_returns201() throws Exception {
-        var product = new Product();
-        product.setName("Widget");
-        when(service.create(any())).thenReturn(product);
+        var response = new ProductResponse(1L, "Widget", new BigDecimal("10.00"));
+        when(service.create(any())).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/products")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"name":"Widget","price":10.0}"""))
+                .content("""
+                    {"name":"Widget","price":10.0}
+                    """))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.name").value("Widget"));
     }
@@ -157,11 +166,11 @@ Load detailed patterns based on context:
 
 | Topic | Reference | When to Load |
 |-------|-----------|-------------|
-| Web/REST | `references/web.md` | Controllers, validation, exception handling |
+| Web/REST | `references/web.md` | Controllers, validation, exception handling, Problem Details (RFC 7807) |
 | Data Access | `references/data.md` | JPA, repositories, transactions, queries |
 | Security | `references/security.md` | Spring Security 6, OAuth2, JWT, auth |
-| Cloud/Config | `references/cloud.md` | Config server, discovery, resilience |
-| Testing | `references/testing.md` | Unit, integration, slice tests |
+| Cloud/Config | `references/cloud.md` | Config server, discovery, resilience, virtual threads, HTTP interfaces, GraalVM native, OTLP tracing |
+| Testing | `references/testing.md` | Unit, integration, slice tests, Testcontainers @ServiceConnection |
 
 ## Constraints
 
@@ -179,7 +188,7 @@ Load detailed patterns based on context:
 - Skip input validation on endpoints
 - Mix blocking and reactive code
 - Store secrets in application.properties
-- Use deprecated Spring Boot 2.x patterns
+- Use deprecated Spring Boot 2.x/3.x patterns
 - Hardcode URLs, credentials, environment values
 
 ## Architecture Patterns
@@ -269,4 +278,4 @@ public class SecurityConfig {
 
 ## Knowledge Base
 
-Spring Boot 3.x, Java 21, Spring WebFlux, Project Reactor, Spring Data JPA, Spring Security 6, OAuth2/JWT, Hibernate, R2DBC, Spring Cloud, Resilience4j, Micrometer, JUnit 5, TestContainers, Mockito, Maven/Gradle
+Spring Boot 4.x, Java 21+, Spring WebFlux, Project Reactor, Spring Data JPA, Spring Security, OAuth2/JWT, Hibernate, R2DBC, Spring Cloud, Resilience4j, Micrometer, JUnit 5, Testcontainers, Mockito, Maven, Paketo Buildpacks, Skaffold

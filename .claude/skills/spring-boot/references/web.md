@@ -117,8 +117,9 @@ public record UserResponse(
 
 ```java
 @RestControllerAdvice
-@Slf4j
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(
@@ -225,51 +226,51 @@ public class UniqueEmailValidator implements ConstraintValidator<UniqueEmail, St
 }
 ```
 
-## WebClient for External APIs
+## RestClient for External APIs
 
 ```java
 @Configuration
-public class WebClientConfig {
+public class RestClientConfig {
+    private static final Logger log = LoggerFactory.getLogger(RestClientConfig.class);
+
     @Bean
-    public WebClient webClient(WebClient.Builder builder) {
+    public RestClient restClient(RestClient.Builder builder) {
         return builder
             .baseUrl("https://api.example.com")
             .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .filter(logRequest())
+            .requestInterceptor((request, body, execution) -> {
+                log.info("Request: {} {}", request.getMethod(), request.getURI());
+                return execution.execute(request, body);
+            })
             .build();
-    }
-
-    private ExchangeFilterFunction logRequest() {
-        return ExchangeFilterFunction.ofRequestProcessor(request -> {
-            log.info("Request: {} {}", request.method(), request.url());
-            return Mono.just(request);
-        });
     }
 }
 
 @Service
 public class ExternalApiService {
-    private final WebClient webClient;
+    private final RestClient restClient;
 
-    public ExternalApiService(WebClient webClient) {
-        this.webClient = webClient;
+    public ExternalApiService(RestClient restClient) {
+        this.restClient = restClient;
     }
-    
-    public Mono<ExternalDataResponse> fetchData(String id) {
-        return webClient
+
+    public ExternalDataResponse fetchData(String id) {
+        return restClient
             .get()
             .uri("/data/{id}", id)
             .retrieve()
-            .onStatus(HttpStatusCode::is4xxClientError, response ->
-                Mono.error(new ResourceNotFoundException("External resource not found")))
-            .onStatus(HttpStatusCode::is5xxServerError, response ->
-                Mono.error(new ServiceUnavailableException("External service unavailable")))
-            .bodyToMono(ExternalDataResponse.class)
-            .timeout(Duration.ofSeconds(5))
-            .retry(3);
+            .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
+                throw new ResourceNotFoundException("External resource not found");
+            })
+            .onStatus(HttpStatusCode::is5xxServerError, (request, response) -> {
+                throw new ServiceUnavailableException("External service unavailable");
+            })
+            .body(ExternalDataResponse.class);
     }
 }
 ```
+
+Use `RestClient` for blocking calls (default with virtual threads). Use `WebClient` only for reactive/streaming scenarios.
 
 ## CORS Configuration
 
@@ -285,6 +286,44 @@ public class WebConfig implements WebMvcConfigurer {
             .allowedHeaders("*")
             .allowCredentials(true)
             .maxAge(3600);
+    }
+}
+```
+
+## Problem Details (RFC 7807)
+
+```yaml
+# application.yml - enables standard error response format
+spring:
+  mvc:
+    problemdetails:
+      enabled: true
+```
+
+With this enabled, Spring Boot returns RFC 7807 responses for standard exceptions:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with id 42 not found",
+  "instance": "/api/v1/users/42"
+}
+```
+
+Custom Problem Detail exceptions:
+
+```java
+public class UserNotFoundException extends ErrorResponseException {
+
+    public UserNotFoundException(Long userId) {
+        super(HttpStatus.NOT_FOUND,
+            ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+                "User with id " + userId + " not found"),
+            null);
+        setTitle("User Not Found");
+        setType(URI.create("https://api.example.com/errors/user-not-found"));
     }
 }
 ```

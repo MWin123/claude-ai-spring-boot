@@ -5,7 +5,7 @@ description: Java logging best practices with SLF4J, structured logging (JSON), 
 
 # Logging Patterns Skill
 
-Effective logging for Java applications with focus on structured, AI-parsable formats.
+**Rule: JSON is the default log format.** Plain text logging is only for local development with `human-logs` profile. Production, CI/CD, and Kubernetes environments must use structured JSON.
 
 ## When to Use
 - User says "add logging" / "improve logs" / "debug this"
@@ -44,7 +44,7 @@ Effective logging for Java applications with focus on structured, AI-parsable fo
 logging:
   structured:
     format:
-      console: logstash  # Spring Boot 3.4+
+      console: logstash  # Spring Boot 4.x
 
 # When YOU need to read logs manually:
 # Option 1: Use jq
@@ -60,7 +60,7 @@ logging:
 {
   "timestamp": "2026-01-29T10:15:30.123Z",
   "level": "INFO",
-  "logger": "com.example.OrderService",
+  "logger": "pl.piomin.services.OrderService",
   "message": "Order created",
   "requestId": "req-abc123",
   "traceId": "trace-xyz",
@@ -100,21 +100,50 @@ AI can then:
 
 ---
 
-## Quick Setup (Spring Boot 3.4+)
+## Quick Setup (Spring Boot 4.x)
 
 ### Native Structured Logging
 
-Spring Boot 3.4+ has built-in support - no extra dependencies!
+Spring Boot 4.x has built-in JSON logging — no extra dependencies required.
 
 ```yaml
-# application.yml
+# application.yml — this is the REQUIRED default for every app
 logging:
   structured:
     format:
       console: logstash    # or "ecs" for Elastic Common Schema
 
-# Supported formats: logstash, ecs, gelf
+# Supported formats:
+#   logstash - JSON (most common, compatible with ELK and OpenTelemetry Collector)
+#   ecs      - Elastic Common Schema (native Elastic/Kibana integration)
+#   gelf     - Graylog Extended Log Format
 ```
+
+### OpenTelemetry Integration
+
+When Micrometer Tracing is on the classpath, `traceId` and `spanId` are automatically included in every JSON log line. This allows OTel Collector to correlate logs with distributed traces.
+
+```yaml
+# application.yml — tracing + structured logging together
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  structured:
+    format:
+      console: logstash
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+```
+
+Output:
+```json
+{"@timestamp":"2026-01-29T10:15:30.123Z","level":"INFO","logger_name":"pl.piomin.services.OrderService","message":"Order created","traceId":"abc123def456","spanId":"789xyz","service.name":"order-service"}
+```
+
+The `traceId` field in JSON logs is the same trace ID visible in Jaeger, Tempo, or any OTel-compatible backend — enabling direct log-to-trace correlation.
 
 ### Profile-Based Switching
 
@@ -156,7 +185,7 @@ logging:
 
 ---
 
-## Setup for Spring Boot < 3.4
+## Setup for Spring Boot < 3.4 (Legacy)
 
 ### Logstash Logback Encoder
 
@@ -248,4 +277,126 @@ log.debug("Processing order " + orderId + " for user " + userId);
 
 // ✅ For expensive operations
 if (log.isDebugEnabled()) {
+    log.debug("Order details: {}", order.toDetailedString());
+}
 ```
+
+### Exception Logging
+
+```java
+// ✅ GOOD: Pass exception as last argument
+try {
+    processOrder(order);
+} catch (PaymentException e) {
+    log.error("Payment failed for order {}", order.getId(), e);
+}
+
+// ❌ BAD: Loses stack trace
+log.error("Payment failed: " + e.getMessage());
+
+// ❌ BAD: Exception in placeholder (toString only)
+log.error("Payment failed for order {}: {}", order.getId(), e);
+```
+
+### Log Levels Guide
+
+| Level | When to use |
+|-------|------------|
+| `ERROR` | Something broke — action needed. Failed payment, unrecoverable state |
+| `WARN` | Something unexpected but handled. Retry succeeded, fallback used |
+| `INFO` | Business events. Order created, user logged in, job completed |
+| `DEBUG` | Technical details. SQL queries, HTTP requests, cache hits |
+| `TRACE` | Verbose internals. Method entry/exit, loop iterations |
+
+---
+
+## MDC (Mapped Diagnostic Context)
+
+MDC attaches context (request ID, user ID) to every log line in the current thread automatically.
+
+### Request Filter for Correlation IDs
+
+```java
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class MdcFilter implements Filter {
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
+        try {
+            HttpServletRequest httpRequest = (HttpServletRequest) request;
+            String requestId = httpRequest.getHeader("X-Request-Id");
+            if (requestId == null) {
+                requestId = UUID.randomUUID().toString().substring(0, 8);
+            }
+            MDC.put("requestId", requestId);
+            MDC.put("clientIp", httpRequest.getRemoteAddr());
+
+            chain.doFilter(request, response);
+        } finally {
+            MDC.clear();
+        }
+    }
+}
+```
+
+### MDC in Service Layer
+
+```java
+@Service
+public class OrderService {
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+    public Order createOrder(OrderRequest request) {
+        MDC.put("userId", request.userId());
+        MDC.put("orderId", String.valueOf(request.orderId()));
+
+        log.info("Creating order");
+        // All subsequent log lines in this thread automatically include userId and orderId
+
+        return processOrder(request);
+    }
+}
+```
+
+### MDC with Virtual Threads
+
+Virtual threads don't inherit MDC from parent threads. Use `TaskDecorator` to propagate:
+
+```java
+@Configuration
+public class AsyncConfig {
+
+    @Bean
+    public TaskDecorator mdcTaskDecorator() {
+        return runnable -> {
+            Map<String, String> context = MDC.getCopyOfContextMap();
+            return () -> {
+                if (context != null) {
+                    MDC.setContextMap(context);
+                }
+                try {
+                    runnable.run();
+                } finally {
+                    MDC.clear();
+                }
+            };
+        };
+    }
+}
+```
+
+---
+
+## Quick Reference
+
+| Pattern | Use |
+|---------|-----|
+| `LoggerFactory.getLogger(MyClass.class)` | Declare logger (no `@Slf4j`) |
+| `log.info("msg {}", var)` | Parameterized logging |
+| `log.error("msg {}", var, exception)` | Log with stack trace |
+| `MDC.put("key", "value")` | Add context to all logs in thread |
+| `MDC.clear()` | Clean up in `finally` block |
+| `logging.structured.format.console: logstash` | Enable JSON (Spring Boot 4.x) |
+| `kv("field", value)` | Structured argument (Logstash encoder) |

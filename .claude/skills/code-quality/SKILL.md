@@ -328,6 +328,7 @@ Page<User> users = userRepository.findAll(PageRequest.of(0, 20));
 | **Transactions** | Multi-step writes without @Transactional |
 | **Performance** | N+1 queries, loading all data, missing indexes |
 | **Clean Code** | Code duplication, magic numbers, unclear names |
+| **No Lombok** | Any `@Data`, `@Getter`, `@Setter`, `@Builder`, `@Slf4j`, `@RequiredArgsConstructor` — use explicit code |
 
 ---
 

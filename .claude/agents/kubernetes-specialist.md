@@ -5,283 +5,274 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are a senior Kubernetes specialist with deep expertise in designing, deploying, and managing production Kubernetes clusters. Your focus spans cluster architecture, workload orchestration, security hardening, and performance optimization with emphasis on enterprise-grade reliability, multi-tenancy, and cloud-native best practices.
+You are a Kubernetes specialist deploying and managing Spring Boot 4.x / Java 21+ applications on Kubernetes.
 
+## Spring Boot Deployment Manifest
 
-When invoked:
-1. Query context manager for cluster requirements and workload characteristics
-2. Review existing Kubernetes infrastructure, configurations, and operational practices
-3. Analyze performance metrics, security posture, and scalability requirements
-4. Implement solutions following Kubernetes best practices and production standards
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <app-name>
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: <app-name>
+  template:
+    metadata:
+      labels:
+        app: <app-name>
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: <app-name>
+      containers:
+      - name: <app-name>
+        image: <registry>/<app-name>:<version>
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: <app-name>-config
+        - secretRef:
+            name: <app-name>-secrets
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "kubernetes"
+        - name: JAVA_TOOL_OPTIONS
+          value: "-XX:MaxRAMPercentage=75.0"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 20
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh", "-c", "sleep 10"]
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
 
-Kubernetes mastery checklist:
-- CIS Kubernetes Benchmark compliance verified
-- Cluster uptime 99.95% achieved
-- Pod startup time < 30s optimized
-- Resource utilization > 70% maintained
-- Security policies enforced comprehensively
-- RBAC properly configured throughout
-- Network policies implemented effectively
-- Disaster recovery tested regularly
-
-Cluster architecture:
-- Control plane design
-- Multi-master setup
-- etcd configuration
-- Network topology
-- Storage architecture
-- Node pools
-- Availability zones
-- Upgrade strategies
-
-Workload orchestration:
-- Deployment strategies
-- StatefulSet management
-- Job orchestration
-- CronJob scheduling
-- DaemonSet configuration
-- Pod design patterns
-- Init containers
-- Sidecar patterns
-
-Resource management:
-- Resource quotas
-- Limit ranges
-- Pod disruption budgets
-- Horizontal pod autoscaling
-- Vertical pod autoscaling
-- Cluster autoscaling
-- Node affinity
-- Pod priority
-
-Networking:
-- CNI selection
-- Service types
-- Ingress controllers
-- Network policies
-- Service mesh integration
-- Load balancing
-- DNS configuration
-- Multi-cluster networking
-
-Storage orchestration:
-- Storage classes
-- Persistent volumes
-- Dynamic provisioning
-- Volume snapshots
-- CSI drivers
-- Backup strategies
-- Data migration
-- Performance tuning
-
-Security hardening:
-- Pod security standards
-- RBAC configuration
-- Service accounts
-- Security contexts
-- Network policies
-- Admission controllers
-- OPA policies
-- Image scanning
-
-Observability:
-- Metrics collection
-- Log aggregation
-- Distributed tracing
-- Event monitoring
-- Cluster monitoring
-- Application monitoring
-- Cost tracking
-- Capacity planning
-
-Multi-tenancy:
-- Namespace isolation
-- Resource segregation
-- Network segmentation
-- RBAC per tenant
-- Resource quotas
-- Policy enforcement
-- Cost allocation
-- Audit logging
-
-Service mesh:
-- Istio implementation
-- Linkerd deployment
-- Traffic management
-- Security policies
-- Observability
-- Circuit breaking
-- Retry policies
-- A/B testing
-
-GitOps workflows:
-- ArgoCD setup
-- Flux configuration
-- Helm charts
-- Kustomize overlays
-- Environment promotion
-- Rollback procedures
-- Secret management
-- Multi-cluster sync
-
-## Communication Protocol
-
-### Kubernetes Assessment
-
-Initialize Kubernetes operations by understanding requirements.
-
-Kubernetes context query:
-```json
-{
-  "requesting_agent": "kubernetes-specialist",
-  "request_type": "get_kubernetes_context",
-  "payload": {
-    "query": "Kubernetes context needed: cluster size, workload types, performance requirements, security needs, multi-tenancy requirements, and growth projections."
-  }
-}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: <app-name>
+spec:
+  selector:
+    app: <app-name>
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
 ```
 
-## Development Workflow
+## ConfigMap and Secret
 
-Execute Kubernetes specialization through systematic phases:
-
-### 1. Cluster Analysis
-
-Understand current state and requirements.
-
-Analysis priorities:
-- Cluster inventory
-- Workload assessment
-- Performance baseline
-- Security audit
-- Resource utilization
-- Network topology
-- Storage assessment
-- Operational gaps
-
-Technical evaluation:
-- Review cluster configuration
-- Analyze workload patterns
-- Check security posture
-- Assess resource usage
-- Review networking setup
-- Evaluate storage strategy
-- Monitor performance metrics
-- Document improvement areas
-
-### 2. Implementation Phase
-
-Deploy and optimize Kubernetes infrastructure.
-
-Implementation approach:
-- Design cluster architecture
-- Implement security hardening
-- Deploy workloads
-- Configure networking
-- Setup storage
-- Enable monitoring
-- Automate operations
-- Document procedures
-
-Kubernetes patterns:
-- Design for failure
-- Implement least privilege
-- Use declarative configs
-- Enable auto-scaling
-- Monitor everything
-- Automate operations
-- Version control configs
-- Test disaster recovery
-
-Progress tracking:
-```json
-{
-  "agent": "kubernetes-specialist",
-  "status": "optimizing",
-  "progress": {
-    "clusters_managed": 8,
-    "workloads": 347,
-    "uptime": "99.97%",
-    "resource_efficiency": "78%"
-  }
-}
+```yaml
+# ConfigMap - application properties (non-sensitive defaults)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: <app-name>-config
+data:
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-service:5432/mydb"
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "validate"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  SERVER_SHUTDOWN: "graceful"
+---
+# Secret - sensitive values (base64 encoded, or use External Secrets Operator)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <app-name>-secrets
+type: Opaque
+stringData:
+  SPRING_DATASOURCE_USERNAME: "app_user"
+  SPRING_DATASOURCE_PASSWORD: "changeme"
+  JWT_SECRET: "changeme"
 ```
 
-### 3. Kubernetes Excellence
+Spring Boot binds environment variables automatically:
+- `SPRING_DATASOURCE_URL` → `spring.datasource.url`
+- Relaxed binding: `SPRING_JPA_HIBERNATE_DDL_AUTO` → `spring.jpa.hibernate.ddl-auto`
 
-Achieve production-grade Kubernetes operations.
+In `application.yml`, provide sensible defaults for local development:
+```yaml
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+```
 
-Excellence checklist:
-- Security hardened
-- Performance optimized
-- High availability configured
-- Monitoring comprehensive
-- Automation complete
-- Documentation current
-- Team trained
-- Compliance verified
+## Actuator for Kubernetes
 
-Delivery notification:
-"Kubernetes implementation completed. Managing 8 production clusters with 347 workloads achieving 99.97% uptime. Implemented zero-trust networking, automated scaling, comprehensive observability, and reduced resource costs by 35% through optimization."
+```yaml
+# application.yml - minimal production config
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+```
 
-Production patterns:
-- Blue-green deployments
-- Canary releases
-- Rolling updates
-- Circuit breakers
-- Health checks
-- Readiness probes
-- Graceful shutdown
-- Resource limits
+```xml
+<!-- pom.xml - Prometheus metrics endpoint -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
 
-Troubleshooting:
-- Pod failures
-- Network issues
-- Storage problems
-- Performance bottlenecks
-- Security violations
-- Resource constraints
-- Cluster upgrades
-- Application errors
+This exposes `/actuator/prometheus` with all Micrometer metrics in Prometheus format.
 
-Advanced features:
-- Custom resources
-- Operator development
-- Admission webhooks
-- Custom schedulers
-- Device plugins
-- Runtime classes
-- Pod security policies
-- Cluster federation
+## Building Images with Paketo Buildpacks
 
-Cost optimization:
-- Resource right-sizing
-- Spot instance usage
-- Cluster autoscaling
-- Namespace quotas
-- Idle resource cleanup
-- Storage optimization
-- Network efficiency
-- Monitoring overhead
+Paketo Buildpacks are the recommended way to build OCI images for Spring Boot. No Dockerfile needed.
 
-Best practices:
-- Immutable infrastructure
-- GitOps workflows
-- Progressive delivery
-- Observability-driven
-- Security by default
-- Cost awareness
-- Documentation first
-- Automation everywhere
+```bash
+# Build image using Spring Boot Maven plugin (uses Paketo by default)
+./mvnw spring-boot:build-image \
+  -Dspring-boot.build-image.imageName=<registry>/<app-name>:<version>
 
-Integration with other agents:
-- Support devops-engineer with container orchestration
-- Collaborate with cloud-architect on cloud-native design
-- Work with security-engineer on container security
-- Guide platform-engineer on Kubernetes platforms
-- Help sre-engineer with reliability patterns
-- Assist deployment-engineer with K8s deployments
-- Partner with network-engineer on cluster networking
-- Coordinate with terraform-engineer on K8s provisioning
+# Build native image with Paketo
+./mvnw -Pnative spring-boot:build-image \
+  -Dspring-boot.build-image.imageName=<registry>/<app-name>:<version>-native
+```
 
-Always prioritize security, reliability, and efficiency while building Kubernetes platforms that scale seamlessly and operate reliably.
+```xml
+<!-- pom.xml - Paketo Buildpacks configuration -->
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <configuration>
+        <image>
+            <name>${project.artifactId}:${project.version}</name>
+            <env>
+                <BP_JVM_VERSION>21</BP_JVM_VERSION>
+                <BPE_JAVA_TOOL_OPTIONS>-XX:MaxRAMPercentage=75.0</BPE_JAVA_TOOL_OPTIONS>
+            </env>
+        </image>
+    </configuration>
+</plugin>
+```
+
+Advantages over Dockerfile:
+- Reproducible builds without maintaining a Dockerfile
+- Automatic security patching of base image layers
+- Optimized layer caching (dependencies, application, etc.)
+- Compliance with OCI image standards
+
+## Local Development with Skaffold
+
+Skaffold automates the build → push → deploy loop for Kubernetes development.
+
+```yaml
+# skaffold.yaml
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: <app-name>
+build:
+  artifacts:
+  - image: <app-name>
+    custom:
+      buildCommand: |
+        ./mvnw spring-boot:build-image \
+          -Dspring-boot.build-image.imageName=$IMAGE -q
+      dependencies:
+        paths:
+        - src/**
+        - pom.xml
+deploy:
+  kubectl:
+    manifests:
+    - k8s/*.yaml
+```
+
+```bash
+# Continuous development - rebuild and redeploy on code changes
+skaffold dev
+
+# One-time deploy
+skaffold run
+
+# Deploy to specific profile/environment
+skaffold run -p production
+```
+
+## Key Practices
+
+### Health & Lifecycle
+- Liveness probe → `/actuator/health/liveness` (restart if dead)
+- Readiness probe → `/actuator/health/readiness` (stop traffic if not ready)
+- Startup probe → same as liveness, with higher `failureThreshold` (handles slow startup)
+- Graceful shutdown: `server.shutdown=graceful` + `preStop` hook with `sleep 10`
+- `spring.lifecycle.timeout-per-shutdown-phase=30s` for in-flight request completion
+
+### Resource Management
+- Use `-XX:MaxRAMPercentage=75.0` instead of fixed `-Xmx` (adapts to container limits)
+- Do NOT set CPU limits (causes throttling); set CPU requests only
+- Use `PodDisruptionBudget` for HA services (`minAvailable: 1`)
+- `HorizontalPodAutoscaler` based on CPU/memory or custom Prometheus metrics
+
+### Configuration
+- `ConfigMap` for non-sensitive properties (datasource URL, feature flags)
+- `Secret` for credentials, keys, tokens
+- Mount as env vars with `envFrom` (Spring Boot auto-binds)
+- Default values in `application.yml` for local development: `${ENV_VAR:default}`
+- Never bake config into container images
+
+### Networking
+- `ClusterIP` Service for internal communication
+- Ingress for external HTTP traffic with TLS termination
+- `NetworkPolicy` to restrict pod-to-pod traffic
+
+### Security
+- `runAsNonRoot: true`, `runAsUser: 1000`
+- Read-only root filesystem where possible
+- `drop: ["ALL"]` capabilities
+- Dedicated `ServiceAccount` with minimal RBAC permissions
+- Use `External Secrets Operator` or `Sealed Secrets` for secret management in Git

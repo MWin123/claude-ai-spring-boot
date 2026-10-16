@@ -67,6 +67,8 @@ public class SecurityConfig {
 ```java
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
 
@@ -78,7 +80,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
-            @NonNull HttpServletRequest response,
+            @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
@@ -171,11 +173,11 @@ public class JwtService {
             long expiration) {
         return Jwts
             .builder()
-            .setClaims(extraClaims)
-            .setSubject(userDetails.getUsername())
-            .setIssuedAt(new Date(System.currentTimeMillis()))
-            .setExpiration(new Date(System.currentTimeMillis() + expiration))
-            .signWith(getSignInKey(), SignatureAlgorithm.HS256)
+            .claims(extraClaims)
+            .subject(userDetails.getUsername())
+            .issuedAt(new Date(System.currentTimeMillis()))
+            .expiration(new Date(System.currentTimeMillis() + expiration))
+            .signWith(getSignInKey())
             .compact();
     }
 
@@ -194,14 +196,14 @@ public class JwtService {
 
     private Claims extractAllClaims(String token) {
         return Jwts
-            .parserBuilder()
-            .setSigningKey(getSignInKey())
+            .parser()
+            .verifyWith(getSignInKey())
             .build()
-            .parseClaimsJws(token)
-            .getBody();
+            .parseSignedClaims(token)
+            .getPayload();
     }
 
-    private Key getSignInKey() {
+    private SecretKey getSignInKey() {
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
     }
@@ -378,9 +380,12 @@ public class AuthenticationService {
 
 ```java
 @Service
-@RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @PreAuthorize("hasRole('ADMIN')")
     public List<User> getAllUsers() {
@@ -453,6 +458,69 @@ public class OAuth2ResourceServerConfig {
 }
 ```
 
+## SSL Bundles & Certificate Hot Reload
+
+Spring Boot 3.1+ provides unified SSL configuration via SSL Bundles, with automatic reload when certificates change on disk.
+
+### PEM-based SSL Bundle (e.g., cert-manager on Kubernetes)
+
+```yaml
+# application.yml
+spring:
+  ssl:
+    bundle:
+      pem:
+        server:
+          reload-on-update: true
+          keystore:
+            certificate: /etc/ssl/certs/tls.crt
+            private-key: /etc/ssl/certs/tls.key
+          truststore:
+            certificate: /etc/ssl/certs/ca.crt
+
+server:
+  port: 8443
+  ssl:
+    bundle: server
+```
+
+### Applying SSL Bundles to RestClient
+
+```java
+@Configuration
+public class RestClientSslConfig {
+
+    @Bean
+    public RestClient secureRestClient(RestClient.Builder builder, SslBundles sslBundles) {
+        return builder
+            .baseUrl("https://internal-service")
+            .apply(b -> b.requestFactory(
+                ClientHttpRequestFactories.get(
+                    ClientHttpRequestFactorySettings.DEFAULTS
+                        .withSslBundle(sslBundles.getBundle("server"))
+                )))
+            .build();
+    }
+}
+```
+
+### JKS-based SSL Bundle
+
+```yaml
+spring:
+  ssl:
+    bundle:
+      jks:
+        server:
+          reload-on-update: true
+          keystore:
+            location: classpath:keystore.p12
+            password: ${KEYSTORE_PASSWORD}
+            type: PKCS12
+```
+
+When `reload-on-update: true` is set, Spring Boot watches the certificate files and automatically reloads the SSL context when they change — no application restart required. This works seamlessly with Kubernetes cert-manager, which writes renewed certificates to the mounted Secret volume.
+
 ## Quick Reference
 
 | Annotation | Purpose |
@@ -468,7 +536,8 @@ public class OAuth2ResourceServerConfig {
 ## Security Best Practices
 
 - Always use HTTPS in production
-- Store JWT secret in environment variables
+- Use SSL Bundles with `reload-on-update: true` for zero-downtime certificate rotation
+- Store JWT secret in environment variables or mounted secrets
 - Use strong password encoding (BCrypt with strength 12+)
 - Implement token refresh mechanism
 - Add rate limiting to authentication endpoints

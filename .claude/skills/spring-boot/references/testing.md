@@ -74,12 +74,13 @@ class UserServiceTest {
 
 ```java
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
 @ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class UserIntegrationTest {
 
     @Autowired
-    private TestRestTemplate restTemplate;
+    private RestTestClient restTestClient;
 
     @Autowired
     private UserRepository userRepository;
@@ -101,18 +102,18 @@ class UserIntegrationTest {
             25
         );
 
-        // When
-        ResponseEntity<UserResponse> response = restTemplate.postForEntity(
-            "/api/v1/users",
-            request,
-            UserResponse.class
-        );
-
-        // Then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().email()).isEqualTo(request.email());
-        assertThat(response.getHeaders().getLocation()).isNotNull();
+        // When & Then
+        restTestClient.post()
+            .uri("/api/v1/users")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .exchange()
+            .expectStatus().isCreated()
+            .expectHeader().exists("Location")
+            .expectBody(UserResponse.class)
+            .value(response -> {
+                assertThat(response.email()).isEqualTo(request.email());
+            });
     }
 
     @Test
@@ -127,17 +128,15 @@ class UserIntegrationTest {
             15
         );
 
-        // When
-        ResponseEntity<ValidationErrorResponse> response = restTemplate.postForEntity(
-            "/api/v1/users",
-            request,
-            ValidationErrorResponse.class
-        );
-
-        // Then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().errors()).isNotEmpty();
+        // When & Then
+        restTestClient.post()
+            .uri("/api/v1/users")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .exchange()
+            .expectStatus().isBadRequest()
+            .expectBody()
+            .jsonPath("$.errors").isNotEmpty();
     }
 }
 ```
@@ -244,12 +243,11 @@ class UserRepositoryTest {
     @DisplayName("Should find user by email")
     void shouldFindUserByEmail() {
         // Given
-        User user = User.builder()
-            .email("test@example.com")
-            .password("password")
-            .username("testuser")
-            .active(true)
-            .build();
+        User user = new User();
+        user.setEmail("test@example.com");
+        user.setPassword("password");
+        user.setUsername("testuser");
+        user.setActive(true);
 
         entityManager.persistAndFlush(user);
 
@@ -265,12 +263,11 @@ class UserRepositoryTest {
     @DisplayName("Should check if email exists")
     void shouldCheckIfEmailExists() {
         // Given
-        User user = User.builder()
-            .email("test@example.com")
-            .password("password")
-            .username("testuser")
-            .active(true)
-            .build();
+        User user = new User();
+        user.setEmail("test@example.com");
+        user.setPassword("password");
+        user.setUsername("testuser");
+        user.setActive(true);
 
         entityManager.persistAndFlush(user);
 
@@ -285,16 +282,16 @@ class UserRepositoryTest {
     @DisplayName("Should fetch user with roles")
     void shouldFetchUserWithRoles() {
         // Given
-        Role adminRole = Role.builder().name("ADMIN").build();
+        Role adminRole = new Role();
+        adminRole.setName("ADMIN");
         entityManager.persist(adminRole);
 
-        User user = User.builder()
-            .email("admin@example.com")
-            .password("password")
-            .username("admin")
-            .active(true)
-            .roles(Set.of(adminRole))
-            .build();
+        User user = new User();
+        user.setEmail("admin@example.com");
+        user.setPassword("password");
+        user.setUsername("admin");
+        user.setActive(true);
+        user.setRoles(Set.of(adminRole));
 
         entityManager.persistAndFlush(user);
         entityManager.clear();
@@ -310,26 +307,18 @@ class UserRepositoryTest {
 }
 ```
 
-## Testcontainers for Database
+## Testcontainers with @ServiceConnection
 
 ```java
+// ✅ Preferred: @ServiceConnection auto-configures datasource properties
 @SpringBootTest
 @Testcontainers
 @ActiveProfiles("test")
 class UserServiceIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
-        .withDatabaseName("testdb")
-        .withUsername("test")
-        .withPassword("test");
-
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-    }
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Autowired
     private UserService userService;
@@ -361,6 +350,45 @@ class UserServiceIntegrationTest {
         assertThat(found).isNotNull();
         assertThat(found.email()).isEqualTo(request.email());
     }
+}
+```
+
+### Legacy approach (Spring Boot < 3.1, not recommended)
+
+```java
+// @DynamicPropertySource - still works, but @ServiceConnection is simpler
+@Container
+static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+    .withDatabaseName("testdb")
+    .withUsername("test")
+    .withPassword("test");
+
+@DynamicPropertySource
+static void configureProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.datasource.url", postgres::getJdbcUrl);
+    registry.add("spring.datasource.username", postgres::getUsername);
+    registry.add("spring.datasource.password", postgres::getPassword);
+}
+```
+
+### Reusable Container Configuration
+
+```java
+@TestConfiguration(proxyBeanMethods = false)
+public class TestcontainersConfig {
+
+    @Bean
+    @ServiceConnection
+    public PostgreSQLContainer<?> postgresContainer() {
+        return new PostgreSQLContainer<>("postgres:16-alpine");
+    }
+}
+
+// Use in tests
+@SpringBootTest
+@Import(TestcontainersConfig.class)
+class OrderServiceIntegrationTest {
+    // Container shared across tests in this class
 }
 ```
 
@@ -467,7 +495,7 @@ spring:
 logging:
   level:
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.orm.jdbc.bind: TRACE
 
 // Test Configuration Class
 @TestConfiguration
@@ -496,14 +524,14 @@ public class TestConfig {
 public class TestDataFactory {
 
     public static User createUser(String email, String username) {
-        return User.builder()
-            .email(email)
-            .password("encodedPassword")
-            .username(username)
-            .active(true)
-            .createdAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
-            .build();
+        User user = new User();
+        user.setEmail(email);
+        user.setPassword("encodedPassword");
+        user.setUsername(username);
+        user.setActive(true);
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+        return user;
     }
 
     public static UserCreateRequest createUserRequest() {
@@ -522,6 +550,7 @@ public class TestDataFactory {
 | Annotation | Purpose |
 |------------|---------|
 | `@SpringBootTest` | Full application context integration test |
+| `@AutoConfigureRestTestClient` | Auto-configure `RestTestClient` for integration tests |
 | `@WebMvcTest` | Test MVC controllers with mocked services |
 | `@WebFluxTest` | Test reactive controllers |
 | `@DataJpaTest` | Test JPA repositories with in-memory database |
