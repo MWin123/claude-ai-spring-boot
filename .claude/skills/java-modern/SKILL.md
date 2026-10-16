@@ -157,6 +157,32 @@ public BigDecimal calculateDiscount(Order order) {
 }
 ```
 
+### In Service Logic
+
+```java
+// Replacing if-else chains with pattern matching
+public String processNotification(Object event) {
+    return switch (event) {
+        case OrderCreated o when o.total().compareTo(BigDecimal.valueOf(1000)) > 0 ->
+            sendPriorityNotification(o);
+        case OrderCreated o -> sendStandardNotification(o);
+        case OrderCancelled c -> sendCancellationNotification(c);
+        case PaymentReceived p -> sendPaymentConfirmation(p);
+        default -> throw new IllegalArgumentException("Unknown event: " + event);
+    };
+}
+
+// Pattern matching with instanceof — no more casting
+public BigDecimal calculateShipping(Address address) {
+    if (address instanceof DomesticAddress d) {
+        return d.isExpressZone() ? DOMESTIC_EXPRESS : DOMESTIC_STANDARD;
+    } else if (address instanceof InternationalAddress i) {
+        return BASE_INTERNATIONAL.multiply(i.distanceFactor());
+    }
+    throw new IllegalArgumentException("Unknown address type");
+}
+```
+
 ### In Exception Handlers
 
 ```java
