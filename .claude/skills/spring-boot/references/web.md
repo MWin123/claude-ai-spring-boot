@@ -290,6 +290,44 @@ public class WebConfig implements WebMvcConfigurer {
 }
 ```
 
+## Problem Details (RFC 7807) - Spring Boot 3+
+
+```yaml
+# application.yml - enables standard error response format
+spring:
+  mvc:
+    problemdetails:
+      enabled: true
+```
+
+With this enabled, Spring Boot returns RFC 7807 responses for standard exceptions:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with id 42 not found",
+  "instance": "/api/v1/users/42"
+}
+```
+
+Custom Problem Detail exceptions:
+
+```java
+public class UserNotFoundException extends ErrorResponseException {
+
+    public UserNotFoundException(Long userId) {
+        super(HttpStatus.NOT_FOUND,
+            ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+                "User with id " + userId + " not found"),
+            null);
+        setTitle("User Not Found");
+        setType(URI.create("https://api.example.com/errors/user-not-found"));
+    }
+}
+```
+
 ## Quick Reference
 
 | Annotation | Purpose |

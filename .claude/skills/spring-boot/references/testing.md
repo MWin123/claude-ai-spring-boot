@@ -310,26 +310,18 @@ class UserRepositoryTest {
 }
 ```
 
-## Testcontainers for Database
+## Testcontainers with @ServiceConnection (Spring Boot 3.1+)
 
 ```java
+// ✅ Preferred: @ServiceConnection auto-configures datasource properties
 @SpringBootTest
 @Testcontainers
 @ActiveProfiles("test")
 class UserServiceIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
-        .withDatabaseName("testdb")
-        .withUsername("test")
-        .withPassword("test");
-
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-    }
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Autowired
     private UserService userService;
@@ -361,6 +353,45 @@ class UserServiceIntegrationTest {
         assertThat(found).isNotNull();
         assertThat(found.email()).isEqualTo(request.email());
     }
+}
+```
+
+### Legacy approach (Spring Boot < 3.1)
+
+```java
+// @DynamicPropertySource - still works, but @ServiceConnection is simpler
+@Container
+static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+    .withDatabaseName("testdb")
+    .withUsername("test")
+    .withPassword("test");
+
+@DynamicPropertySource
+static void configureProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.datasource.url", postgres::getJdbcUrl);
+    registry.add("spring.datasource.username", postgres::getUsername);
+    registry.add("spring.datasource.password", postgres::getPassword);
+}
+```
+
+### Reusable Container Configuration
+
+```java
+@TestConfiguration(proxyBeanMethods = false)
+public class TestcontainersConfig {
+
+    @Bean
+    @ServiceConnection
+    public PostgreSQLContainer<?> postgresContainer() {
+        return new PostgreSQLContainer<>("postgres:16-alpine");
+    }
+}
+
+// Use in tests
+@SpringBootTest
+@Import(TestcontainersConfig.class)
+class OrderServiceIntegrationTest {
+    // Container shared across tests in this class
 }
 ```
 

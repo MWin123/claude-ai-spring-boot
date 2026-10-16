@@ -268,10 +268,40 @@ resilience4j:
         timeout-duration: 0s
 ```
 
-## Distributed Tracing - Micrometer Tracing
+## Distributed Tracing - Micrometer + OpenTelemetry
 
-```java
-// application.yml
+### OTLP Exporter (Preferred)
+
+```yaml
+# application.yml - OpenTelemetry Protocol (recommended over Zipkin)
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+```
+
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-tracing-bridge-otel</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-exporter-otlp</artifactId>
+</dependency>
+```
+
+### Zipkin Exporter (Alternative)
+
+```yaml
 management:
   tracing:
     sampling:
@@ -279,36 +309,28 @@ management:
   zipkin:
     tracing:
       endpoint: http://localhost:9411/api/v2/spans
+```
 
-logging:
-  pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+### Custom Spans with Observation API
 
-// Custom spans
+```java
 @Service
 public class OrderService {
-    private final Tracer tracer;
+    private final ObservationRegistry observationRegistry;
     private final OrderRepository orderRepository;
 
-    public OrderService(Tracer tracer, OrderRepository orderRepository) {
-        this.tracer = tracer;
+    public OrderService(ObservationRegistry observationRegistry, OrderRepository orderRepository) {
+        this.observationRegistry = observationRegistry;
         this.orderRepository = orderRepository;
     }
 
     public Order processOrder(OrderRequest request) {
-        Span span = tracer.nextSpan().name("processOrder").start();
-        try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
-            span.tag("order.type", request.type());
-            span.tag("order.items", String.valueOf(request.items().size()));
-
-            // Business logic
-            Order order = createOrder(request);
-
-            span.event("order.created");
-            return order;
-        } finally {
-            span.end();
-        }
+        return Observation.createNotStarted("order.process", observationRegistry)
+            .lowCardinalityKeyValue("order.type", request.type())
+            .observe(() -> {
+                Order order = createOrder(request);
+                return order;
+            });
     }
 }
 ```
@@ -469,29 +491,136 @@ spec:
   type: ClusterIP
 ```
 
+## Virtual Threads (Spring Boot 3.2+)
+
+```yaml
+# application.yml - one line enables virtual threads for all request handling
+spring:
+  threads:
+    virtual:
+      enabled: true
+```
+
+Virtual threads eliminate the need for WebFlux in most cases. With `spring.threads.virtual.enabled=true`:
+- Tomcat handles each request on a virtual thread
+- Blocking I/O (JDBC, RestClient, file I/O) no longer wastes platform threads
+- `@Async` tasks run on virtual threads automatically
+- No code changes required - existing blocking code scales like reactive
+
+**When to still use WebFlux:** streaming responses, SSE, WebSocket, or when you need backpressure.
+
+## HTTP Interface Clients (Spring 6+)
+
+```java
+// Declarative HTTP client - replaces OpenFeign
+public interface UserClient {
+
+    @GetExchange("/users/{id}")
+    UserResponse getUser(@PathVariable Long id);
+
+    @GetExchange("/users")
+    List<UserResponse> getAllUsers();
+
+    @PostExchange("/users")
+    UserResponse createUser(@RequestBody UserCreateRequest request);
+}
+
+// Configuration
+@Configuration
+public class ClientConfig {
+
+    @Bean
+    public UserClient userClient(RestClient.Builder builder) {
+        RestClient restClient = builder
+            .baseUrl("http://user-service")
+            .build();
+        return HttpServiceProxyFactory
+            .builderFor(RestClientAdapter.create(restClient))
+            .build()
+            .createClient(UserClient.class);
+    }
+}
+```
+
+## GraalVM Native Image
+
+```xml
+<!-- pom.xml - add native profile support -->
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.4.0</version>
+</parent>
+
+<plugin>
+    <groupId>org.graalvm.buildtools</groupId>
+    <artifactId>native-maven-plugin</artifactId>
+</plugin>
+```
+
+```bash
+# Build native image
+./mvnw -Pnative native:compile
+
+# Build native Docker image with Buildpacks
+./mvnw -Pnative spring-boot:build-image
+```
+
+Benefits: ~50ms startup, ~50MB RSS memory. Trade-offs: longer build time, reflection requires hints.
+
+## Graceful Shutdown
+
+```yaml
+# application.yml - required for zero-downtime K8s rolling updates
+server:
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+```
+
+```yaml
+# Kubernetes - add preStop hook to allow deregistration
+spec:
+  containers:
+  - name: app
+    lifecycle:
+      preStop:
+        exec:
+          command: ["sh", "-c", "sleep 10"]
+```
+
 ## Docker Configuration
 
+### Multi-stage Build
+
 ```dockerfile
-# Dockerfile (Multi-stage)
 FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /workspace/app
 
 COPY mvnw .
 COPY .mvn .mvn
 COPY pom.xml .
-COPY src src
+RUN ./mvnw dependency:go-offline -B
 
-RUN ./mvnw install -DskipTests
-RUN mkdir -p target/dependency && (cd target/dependency; jar -xf ../*.jar)
+COPY src src
+RUN ./mvnw package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
-VOLUME /tmp
-ARG DEPENDENCY=/workspace/app/target/dependency
-COPY --from=build ${DEPENDENCY}/BOOT-INF/lib /app/lib
-COPY --from=build ${DEPENDENCY}/META-INF /app/META-INF
-COPY --from=build ${DEPENDENCY}/BOOT-INF/classes /app
+RUN addgroup -S app && adduser -S app -G app
+WORKDIR /app
+COPY --from=build /workspace/app/target/*.jar app.jar
+USER app
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/actuator/health || exit 1
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
 
-ENTRYPOINT ["java","-cp","app:app/lib/*","com.example.Application"]
+### Cloud Native Buildpacks (Alternative)
+
+```bash
+# Build OCI image without a Dockerfile
+./mvnw spring-boot:build-image -Dspring-boot.build-image.imageName=myapp:1.0.0
 ```
 
 ## Quick Reference
@@ -503,6 +632,9 @@ ENTRYPOINT ["java","-cp","app:app/lib/*","com.example.Application"]
 | **Gateway** | API gateway with routing, filtering, load balancing |
 | **Circuit Breaker** | Fault tolerance and fallback patterns |
 | **Load Balancer** | Client-side load balancing |
-| **Tracing** | Distributed tracing across services |
+| **Tracing (OTLP)** | Distributed tracing with OpenTelemetry |
 | **Actuator** | Production-ready monitoring and management |
+| **Virtual Threads** | High-throughput blocking I/O without WebFlux |
+| **HTTP Interfaces** | Declarative HTTP clients (replaces Feign) |
+| **Native Image** | Fast startup, low memory with GraalVM |
 | **Kubernetes** | Container orchestration and deployment |

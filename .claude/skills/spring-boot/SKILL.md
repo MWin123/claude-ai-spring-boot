@@ -157,11 +157,11 @@ Load detailed patterns based on context:
 
 | Topic | Reference | When to Load |
 |-------|-----------|-------------|
-| Web/REST | `references/web.md` | Controllers, validation, exception handling |
+| Web/REST | `references/web.md` | Controllers, validation, exception handling, Problem Details (RFC 7807) |
 | Data Access | `references/data.md` | JPA, repositories, transactions, queries |
 | Security | `references/security.md` | Spring Security 6, OAuth2, JWT, auth |
-| Cloud/Config | `references/cloud.md` | Config server, discovery, resilience |
-| Testing | `references/testing.md` | Unit, integration, slice tests |
+| Cloud/Config | `references/cloud.md` | Config server, discovery, resilience, virtual threads, HTTP interfaces, GraalVM native, OTLP tracing |
+| Testing | `references/testing.md` | Unit, integration, slice tests, Testcontainers @ServiceConnection |
 
 ## Constraints
 

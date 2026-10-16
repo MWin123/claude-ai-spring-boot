@@ -22,11 +22,13 @@ Each skill folder contains:
 |-------|-------------|
 | [code-quality](code-quality/) | Comprehensive code review - clean code principles, API contracts, null safety, exception handling, performance |
 | [design-patterns](design-patterns/) | Common design patterns with Java examples (Factory, Builder, Strategy, Observer, Decorator, Adapter) |
+| [testing-patterns](testing-patterns/) | Testing strategies - JUnit 5, Mockito, MockMvc, Testcontainers, positive and negative test cases |
 
-### Framework & Data
+### Language & Framework
 | Skill | Description |
 |-------|-------------|
-| [jpa-patterns](jpa-patterns/) | JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries) |
+| [java-modern](java-modern/) | Java 21+ features for Spring Boot - records, sealed classes, pattern matching, virtual threads, text blocks |
+| [jpa-patterns](jpa-patterns/) | JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries, Hibernate 6) |
 | [logging-patterns](logging-patterns/) | Structured logging (JSON), SLF4J, MDC, AI-friendly formats for Spring Boot 3.4+ |
 
 ## Adding a New Skill
