@@ -5,7 +5,7 @@ description: Java logging best practices with SLF4J, structured logging (JSON), 
 
 # Logging Patterns Skill
 
-Effective logging for Java applications with focus on structured, AI-parsable formats.
+**Rule: JSON is the default log format.** Plain text logging is only for local development with `human-logs` profile. Production, CI/CD, and Kubernetes environments must use structured JSON.
 
 ## When to Use
 - User says "add logging" / "improve logs" / "debug this"
@@ -104,17 +104,46 @@ AI can then:
 
 ### Native Structured Logging
 
-Spring Boot 4.x has built-in support - no extra dependencies!
+Spring Boot 4.x has built-in JSON logging — no extra dependencies required.
 
 ```yaml
-# application.yml
+# application.yml — this is the REQUIRED default for every app
 logging:
   structured:
     format:
       console: logstash    # or "ecs" for Elastic Common Schema
 
-# Supported formats: logstash, ecs, gelf
+# Supported formats:
+#   logstash - JSON (most common, compatible with ELK and OpenTelemetry Collector)
+#   ecs      - Elastic Common Schema (native Elastic/Kibana integration)
+#   gelf     - Graylog Extended Log Format
 ```
+
+### OpenTelemetry Integration
+
+When Micrometer Tracing is on the classpath, `traceId` and `spanId` are automatically included in every JSON log line. This allows OTel Collector to correlate logs with distributed traces.
+
+```yaml
+# application.yml — tracing + structured logging together
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  structured:
+    format:
+      console: logstash
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+```
+
+Output:
+```json
+{"@timestamp":"2026-01-29T10:15:30.123Z","level":"INFO","logger_name":"pl.piomin.services.OrderService","message":"Order created","traceId":"abc123def456","spanId":"789xyz","service.name":"order-service"}
+```
+
+The `traceId` field in JSON logs is the same trace ID visible in Jaeger, Tempo, or any OTel-compatible backend — enabling direct log-to-trace correlation.
 
 ### Profile-Based Switching
 
