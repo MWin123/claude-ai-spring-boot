@@ -243,12 +243,11 @@ class UserRepositoryTest {
     @DisplayName("Should find user by email")
     void shouldFindUserByEmail() {
         // Given
-        User user = User.builder()
-            .email("test@example.com")
-            .password("password")
-            .username("testuser")
-            .active(true)
-            .build();
+        User user = new User();
+        user.setEmail("test@example.com");
+        user.setPassword("password");
+        user.setUsername("testuser");
+        user.setActive(true);
 
         entityManager.persistAndFlush(user);
 
@@ -264,12 +263,11 @@ class UserRepositoryTest {
     @DisplayName("Should check if email exists")
     void shouldCheckIfEmailExists() {
         // Given
-        User user = User.builder()
-            .email("test@example.com")
-            .password("password")
-            .username("testuser")
-            .active(true)
-            .build();
+        User user = new User();
+        user.setEmail("test@example.com");
+        user.setPassword("password");
+        user.setUsername("testuser");
+        user.setActive(true);
 
         entityManager.persistAndFlush(user);
 
@@ -284,16 +282,16 @@ class UserRepositoryTest {
     @DisplayName("Should fetch user with roles")
     void shouldFetchUserWithRoles() {
         // Given
-        Role adminRole = Role.builder().name("ADMIN").build();
+        Role adminRole = new Role();
+        adminRole.setName("ADMIN");
         entityManager.persist(adminRole);
 
-        User user = User.builder()
-            .email("admin@example.com")
-            .password("password")
-            .username("admin")
-            .active(true)
-            .roles(Set.of(adminRole))
-            .build();
+        User user = new User();
+        user.setEmail("admin@example.com");
+        user.setPassword("password");
+        user.setUsername("admin");
+        user.setActive(true);
+        user.setRoles(Set.of(adminRole));
 
         entityManager.persistAndFlush(user);
         entityManager.clear();
@@ -497,7 +495,7 @@ spring:
 logging:
   level:
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.orm.jdbc.bind: TRACE
 
 // Test Configuration Class
 @TestConfiguration
@@ -526,14 +524,14 @@ public class TestConfig {
 public class TestDataFactory {
 
     public static User createUser(String email, String username) {
-        return User.builder()
-            .email(email)
-            .password("encodedPassword")
-            .username(username)
-            .active(true)
-            .createdAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
-            .build();
+        User user = new User();
+        user.setEmail(email);
+        user.setPassword("encodedPassword");
+        user.setUsername(username);
+        user.setActive(true);
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+        return user;
     }
 
     public static UserCreateRequest createUserRequest() {

@@ -41,6 +41,9 @@ src/main/java/pl/piomin/services/
 - `@RestControllerAdvice` for global exception handling
 - Return `ResponseEntity` with proper status codes (201 Created, 204 No Content, etc.)
 - `@ConfigurationProperties` for type-safe config (no raw `@Value` for groups of properties)
+- `RestClient` for blocking HTTP calls to external services (not RestTemplate/WebClient)
+- `@HttpExchange` interfaces for declarative HTTP clients (replaces OpenFeign for simple cases)
+- OpenFeign remains a valid option when used with service discovery (Eureka/Consul) and load balancing
 
 ## Workflow
 

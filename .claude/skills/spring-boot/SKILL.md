@@ -89,24 +89,30 @@ public class ProductController {
     }
 
     @GetMapping
-    public List<Product> search(@RequestParam(defaultValue = "") String name) {
+    public List<ProductResponse> search(@RequestParam(defaultValue = "") String name) {
         return service.search(name);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Product create(@Valid @RequestBody ProductRequest request) {
+    public ProductResponse create(@Valid @RequestBody ProductRequest request) {
         return service.create(request);
     }
 }
 ```
 
-### DTO (Record)
+### DTOs (Records)
 ```java
 public record ProductRequest(
     @NotBlank String name,
     @DecimalMin("0.0") BigDecimal price
 ) {}
+
+public record ProductResponse(Long id, String name, BigDecimal price) {
+    public static ProductResponse from(Product product) {
+        return new ProductResponse(product.getId(), product.getName(), product.getPrice());
+    }
+}
 ```
 
 ### Global Exception Handler

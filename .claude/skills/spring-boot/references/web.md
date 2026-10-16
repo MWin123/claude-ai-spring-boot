@@ -231,6 +231,7 @@ public class UniqueEmailValidator implements ConstraintValidator<UniqueEmail, St
 ```java
 @Configuration
 public class RestClientConfig {
+    private static final Logger log = LoggerFactory.getLogger(RestClientConfig.class);
 
     @Bean
     public RestClient restClient(RestClient.Builder builder) {
