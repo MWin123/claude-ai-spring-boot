@@ -8,7 +8,7 @@ description: Java 21+ features for Spring Boot - records, sealed classes, patter
 Java 21+ language features and how to use them in Spring Boot applications.
 
 ## When to Use
-- Building new Spring Boot 3.x applications (default to modern features)
+- Building new Spring Boot 4.x applications (default to modern features)
 - Modernizing/refactoring existing Java code
 - User asks about records, sealed classes, pattern matching, virtual threads
 
@@ -45,7 +45,7 @@ public record ProductResponse(
 ### Configuration Properties
 
 ```java
-// ✅ Records for config properties (Spring Boot 3.x)
+// ✅ Records for config properties (Spring Boot 4.x)
 @ConfigurationProperties(prefix = "app.notification")
 public record NotificationProperties(
     boolean enabled,
@@ -181,7 +181,7 @@ public class GlobalExceptionHandler {
 
 ---
 
-## Virtual Threads (Java 21 + Spring Boot 3.2+)
+## Virtual Threads (Java 21 + Spring Boot 4.x)
 
 ```yaml
 # application.yml - enables virtual threads for all request handling

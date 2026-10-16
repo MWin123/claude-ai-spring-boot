@@ -290,7 +290,7 @@ public class WebConfig implements WebMvcConfigurer {
 }
 ```
 
-## Problem Details (RFC 7807) - Spring Boot 3+
+## Problem Details (RFC 7807)
 
 ```yaml
 # application.yml - enables standard error response format

@@ -44,6 +44,38 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 - Environment variables for Spring datasource, JPA settings
 - Port mapping for debugging (5005 for remote debug)
 
+## Paketo Buildpacks (Recommended over Dockerfile)
+
+Spring Boot Maven plugin builds OCI images using Paketo Buildpacks - no Dockerfile needed.
+
+```bash
+# Build image
+./mvnw spring-boot:build-image \
+  -Dspring-boot.build-image.imageName=myapp:1.0.0
+
+# Build native image
+./mvnw -Pnative spring-boot:build-image \
+  -Dspring-boot.build-image.imageName=myapp:1.0.0-native
+```
+
+```xml
+<!-- pom.xml configuration -->
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <configuration>
+        <image>
+            <name>${project.artifactId}:${project.version}</name>
+            <env>
+                <BP_JVM_VERSION>21</BP_JVM_VERSION>
+            </env>
+        </image>
+    </configuration>
+</plugin>
+```
+
+Use Dockerfile only when you need full control over the image build process. Prefer Paketo for standard Spring Boot applications.
+
 ## Security
 - Scan images with `docker scout` or Trivy
 - Pin base image versions (digest or specific tag, not `latest`)

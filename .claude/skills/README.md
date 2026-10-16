@@ -15,7 +15,7 @@ Each skill folder contains:
 ### Core
 | Skill | Description |
 |-------|-------------|
-| [spring-boot](spring-boot/) | Spring Boot 3.x development - REST APIs, JPA, Security, Testing, Cloud-native patterns. Includes reference guides for web, data, security, cloud, and testing |
+| [spring-boot](spring-boot/) | Spring Boot 4.x development - REST APIs, JPA, Security, Testing, Cloud-native patterns. Includes reference guides for web, data, security, cloud, and testing |
 
 ### Code Quality
 | Skill | Description |
@@ -29,7 +29,7 @@ Each skill folder contains:
 |-------|-------------|
 | [java-modern](java-modern/) | Java 21+ features for Spring Boot - records, sealed classes, pattern matching, virtual threads, text blocks |
 | [jpa-patterns](jpa-patterns/) | JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries, Hibernate 6) |
-| [logging-patterns](logging-patterns/) | Structured logging (JSON), SLF4J, MDC, AI-friendly formats for Spring Boot 3.4+ |
+| [logging-patterns](logging-patterns/) | Structured logging (JSON), SLF4J, MDC, AI-friendly formats for Spring Boot 4.x |
 
 ## Adding a New Skill
 

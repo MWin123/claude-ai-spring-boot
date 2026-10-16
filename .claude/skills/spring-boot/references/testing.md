@@ -310,7 +310,7 @@ class UserRepositoryTest {
 }
 ```
 
-## Testcontainers with @ServiceConnection (Spring Boot 3.1+)
+## Testcontainers with @ServiceConnection
 
 ```java
 // ✅ Preferred: @ServiceConnection auto-configures datasource properties
@@ -356,7 +356,7 @@ class UserServiceIntegrationTest {
 }
 ```
 
-### Legacy approach (Spring Boot < 3.1)
+### Legacy approach (Spring Boot < 3.1, not recommended)
 
 ```java
 // @DynamicPropertySource - still works, but @ServiceConnection is simpler

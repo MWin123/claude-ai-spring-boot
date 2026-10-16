@@ -377,7 +377,37 @@ public class UserClientService {
 }
 ```
 
-## Health Checks & Actuator
+## Health Checks, Actuator & Prometheus
+
+```xml
+<!-- pom.xml - Prometheus metrics endpoint -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+```yaml
+# application.yml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+```
 
 ```java
 @Component
@@ -405,41 +435,50 @@ public class CustomHealthIndicator implements HealthIndicator {
         return true;
     }
 }
-
-// application.yml
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      show-details: always
-      probes:
-        enabled: true
-  health:
-    livenessState:
-      enabled: true
-    readinessState:
-      enabled: true
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-    tags:
-      application: ${spring.application.name}
 ```
 
 ## Kubernetes Deployment
 
+### ConfigMap and Secret
+
 ```yaml
-# deployment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+data:
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-service:5432/mydb"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
+  SERVER_SHUTDOWN: "graceful"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: user-service-secrets
+type: Opaque
+stringData:
+  SPRING_DATASOURCE_USERNAME: "app_user"
+  SPRING_DATASOURCE_PASSWORD: "changeme"
+```
+
+Provide default values in `application.yml` for local development:
+```yaml
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+```
+
+### Deployment Manifest
+
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: user-service
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: user-service
@@ -447,36 +486,58 @@ spec:
     metadata:
       labels:
         app: user-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
     spec:
       containers:
       - name: user-service
         image: user-service:1.0.0
         ports:
         - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: user-service-config
+        - secretRef:
+            name: user-service-secrets
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"
-        - name: JAVA_OPTS
-          value: "-Xmx512m -Xms256m"
+        - name: JAVA_TOOL_OPTIONS
+          value: "-XX:MaxRAMPercentage=75.0"
         livenessProbe:
           httpGet:
             path: /actuator/health/liveness
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /actuator/health/readiness
             port: 8080
-          initialDelaySeconds: 30
+          initialDelaySeconds: 15
           periodSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 20
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh", "-c", "sleep 10"]
         resources:
           requests:
             memory: "512Mi"
-            cpu: "500m"
+            cpu: "250m"
           limits:
             memory: "1Gi"
-            cpu: "1000m"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
 ---
 apiVersion: v1
 kind: Service
@@ -491,7 +552,7 @@ spec:
   type: ClusterIP
 ```
 
-## Virtual Threads (Spring Boot 3.2+)
+## Virtual Threads
 
 ```yaml
 # application.yml - one line enables virtual threads for all request handling
@@ -549,7 +610,7 @@ public class ClientConfig {
 <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.4.0</version>
+    <version>4.1.0</version>
 </parent>
 
 <plugin>
@@ -616,11 +677,79 @@ HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/actu
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
-### Cloud Native Buildpacks (Alternative)
+### Paketo Buildpacks (Recommended)
+
+Paketo Buildpacks build OCI images without a Dockerfile. Integrated into Spring Boot Maven plugin.
 
 ```bash
-# Build OCI image without a Dockerfile
-./mvnw spring-boot:build-image -Dspring-boot.build-image.imageName=myapp:1.0.0
+# Build image (uses Paketo by default)
+./mvnw spring-boot:build-image \
+  -Dspring-boot.build-image.imageName=myapp:1.0.0
+
+# Build native image with Paketo
+./mvnw -Pnative spring-boot:build-image \
+  -Dspring-boot.build-image.imageName=myapp:1.0.0-native
+```
+
+```xml
+<!-- pom.xml - Paketo configuration -->
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <configuration>
+        <image>
+            <name>${project.artifactId}:${project.version}</name>
+            <env>
+                <BP_JVM_VERSION>21</BP_JVM_VERSION>
+                <BPE_JAVA_TOOL_OPTIONS>-XX:MaxRAMPercentage=75.0</BPE_JAVA_TOOL_OPTIONS>
+            </env>
+        </image>
+    </configuration>
+</plugin>
+```
+
+Advantages over Dockerfile:
+- Reproducible builds, no Dockerfile to maintain
+- Automatic security patching of base image layers
+- Optimized layering (dependencies cached separately from app code)
+- Supported by Spring Boot Maven plugin out of the box
+
+## Local K8s Development with Skaffold
+
+Skaffold automates the build → push → deploy loop.
+
+```yaml
+# skaffold.yaml
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: user-service
+build:
+  artifacts:
+  - image: user-service
+    custom:
+      buildCommand: |
+        ./mvnw spring-boot:build-image \
+          -Dspring-boot.build-image.imageName=$IMAGE -q
+      dependencies:
+        paths:
+        - src/**
+        - pom.xml
+deploy:
+  kubectl:
+    manifests:
+    - k8s/*.yaml
+```
+
+```bash
+# Continuous development - rebuild and redeploy on code changes
+skaffold dev
+
+# One-time build + deploy
+skaffold run
+
+# Deploy to specific profile/environment
+skaffold run -p production
 ```
 
 ## Quick Reference
@@ -637,4 +766,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 | **Virtual Threads** | High-throughput blocking I/O without WebFlux |
 | **HTTP Interfaces** | Declarative HTTP clients (replaces Feign) |
 | **Native Image** | Fast startup, low memory with GraalVM |
-| **Kubernetes** | Container orchestration and deployment |
+| **Paketo Buildpacks** | Build OCI images without Dockerfile (Spring Boot plugin) |
+| **Skaffold** | Local Kubernetes development loop (build → deploy → watch) |
+| **Kubernetes** | Container orchestration, ConfigMap/Secret, probes, Prometheus |

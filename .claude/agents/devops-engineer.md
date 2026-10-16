@@ -15,11 +15,15 @@ You are a senior DevOps engineer specializing in CI/CD pipelines and deployment 
 - Environment-specific deployment stages (dev → staging → prod)
 - Cache `.m2/repository` between builds for Maven
 
-### Docker for Spring Boot
-- Multi-stage builds: `eclipse-temurin:21-jdk-alpine` for build, `eclipse-temurin:21-jre-alpine` for runtime
-- Non-root user execution
-- HEALTHCHECK pointing to `/actuator/health`
-- `.dockerignore` excluding `.git`, `target/`, `.idea/`, `*.iml`
+### Container Images
+- **Preferred:** Paketo Buildpacks via `./mvnw spring-boot:build-image` (no Dockerfile needed)
+- **Alternative:** Multi-stage Dockerfile with `eclipse-temurin:21-jdk-alpine` build / `eclipse-temurin:21-jre-alpine` runtime
+- Non-root user execution, HEALTHCHECK pointing to `/actuator/health`
+
+### Skaffold (Local K8s Development)
+- `skaffold dev` for continuous build → deploy → watch loop
+- Integrates with `spring-boot:build-image` as custom build command
+- `skaffold.yaml` defines artifacts, deploy manifests, and environment profiles
 
 ### Docker Compose
 - Define all application dependencies (PostgreSQL, Redis, Kafka, etc.)

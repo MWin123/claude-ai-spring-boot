@@ -44,7 +44,7 @@ Effective logging for Java applications with focus on structured, AI-parsable fo
 logging:
   structured:
     format:
-      console: logstash  # Spring Boot 3.4+
+      console: logstash  # Spring Boot 4.x
 
 # When YOU need to read logs manually:
 # Option 1: Use jq
@@ -100,11 +100,11 @@ AI can then:
 
 ---
 
-## Quick Setup (Spring Boot 3.4+)
+## Quick Setup (Spring Boot 4.x)
 
 ### Native Structured Logging
 
-Spring Boot 3.4+ has built-in support - no extra dependencies!
+Spring Boot 4.x has built-in support - no extra dependencies!
 
 ```yaml
 # application.yml
@@ -156,7 +156,7 @@ logging:
 
 ---
 
-## Setup for Spring Boot < 3.4
+## Setup for Spring Boot < 3.4 (Legacy)
 
 ### Logstash Logback Encoder
 
