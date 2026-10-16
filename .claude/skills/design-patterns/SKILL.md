@@ -1,6 +1,6 @@
 ---
 name: design-patterns
-description: Common design patterns with Java examples (Factory, Builder, Strategy, Observer, Decorator, etc.). Use when user asks "implement pattern", "use factory", "strategy pattern", or when designing extensible components.
+description: Design patterns with Java examples - classic (Factory, Builder, Strategy, Observer, Decorator, Adapter) and enterprise/microservices (Saga, Outbox, CQRS). Use when user asks about patterns, designing extensible components, or distributed transaction strategies.
 ---
 
 # Design Patterns Skill
@@ -22,6 +22,9 @@ Quick reference for common design patterns in Java.
 | Add behavior without changing class | **Decorator** | Dynamic composition needed |
 | Notify multiple objects of changes | **Observer** | One-to-many dependency |
 | Convert incompatible interfaces | **Adapter** | Integrate legacy/3rd party code |
+| DB update + event publish atomically | **Outbox** | Dual-write problem in microservices |
+| Distributed transaction across services | **Saga** | Multi-service business process |
+| Separate read/write models | **CQRS** | Heavy read/write ratio skew |
 
 ---
 
@@ -270,6 +273,246 @@ player.play("song.mp3");
 
 ---
 
+## Enterprise / Microservices Patterns
+
+### Transactional Outbox
+**Problem:** Atomically update database AND publish an event (dual-write problem)
+
+```java
+// ✅ Outbox pattern - write event to DB in same transaction, poll and publish later
+@Entity
+@Table(name = "outbox_events")
+public class OutboxEvent {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String aggregateType;
+    private String aggregateId;
+    private String eventType;
+
+    @Column(columnDefinition = "TEXT")
+    private String payload;
+
+    private LocalDateTime createdAt;
+    private boolean published;
+
+    // getters/setters
+}
+
+@Service
+public class OrderService {
+    private final OrderRepository orderRepository;
+    private final OutboxEventRepository outboxRepository;
+
+    public OrderService(OrderRepository orderRepository, OutboxEventRepository outboxRepository) {
+        this.orderRepository = orderRepository;
+        this.outboxRepository = outboxRepository;
+    }
+
+    @Transactional
+    public Order createOrder(OrderRequest request) {
+        Order order = new Order();
+        order.setStatus(OrderStatus.CREATED);
+        order = orderRepository.save(order);
+
+        OutboxEvent event = new OutboxEvent();
+        event.setAggregateType("Order");
+        event.setAggregateId(order.getId().toString());
+        event.setEventType("OrderCreated");
+        event.setPayload(toJson(order));
+        event.setCreatedAt(LocalDateTime.now());
+        event.setPublished(false);
+        outboxRepository.save(event);
+
+        return order;
+    }
+}
+
+// Poller publishes events and marks them as published
+@Component
+public class OutboxPoller {
+    private final OutboxEventRepository outboxRepository;
+    private final KafkaTemplate<String, String> kafka;
+
+    public OutboxPoller(OutboxEventRepository outboxRepository,
+                        KafkaTemplate<String, String> kafka) {
+        this.outboxRepository = outboxRepository;
+        this.kafka = kafka;
+    }
+
+    @Scheduled(fixedDelay = 1000)
+    @Transactional
+    public void publishPendingEvents() {
+        List<OutboxEvent> events = outboxRepository.findByPublishedFalse();
+        for (OutboxEvent event : events) {
+            kafka.send(event.getAggregateType(), event.getAggregateId(), event.getPayload());
+            event.setPublished(true);
+        }
+    }
+}
+```
+
+### Saga (Choreography)
+**Problem:** Distributed transaction across multiple microservices
+
+```java
+// ✅ Choreography-based saga - each service listens and reacts
+// Order Service publishes OrderCreated
+@Service
+public class OrderService {
+    private final ApplicationEventPublisher eventPublisher;
+    private final OrderRepository orderRepository;
+
+    public OrderService(ApplicationEventPublisher eventPublisher, OrderRepository orderRepository) {
+        this.eventPublisher = eventPublisher;
+        this.orderRepository = orderRepository;
+    }
+
+    @Transactional
+    public Order createOrder(OrderRequest request) {
+        Order order = new Order();
+        order.setStatus(OrderStatus.PENDING);
+        order = orderRepository.save(order);
+        eventPublisher.publishEvent(new OrderCreatedEvent(order.getId(), request.items()));
+        return order;
+    }
+
+    @Transactional
+    public void handlePaymentFailed(Long orderId) {
+        Order order = orderRepository.findById(orderId).orElseThrow();
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
+    }
+}
+
+// Payment Service listens to OrderCreated, publishes PaymentCompleted or PaymentFailed
+@Component
+public class PaymentEventHandler {
+    private final PaymentService paymentService;
+
+    public PaymentEventHandler(PaymentService paymentService) {
+        this.paymentService = paymentService;
+    }
+
+    @KafkaListener(topics = "order-events")
+    public void handleOrderCreated(OrderCreatedEvent event) {
+        try {
+            paymentService.charge(event.orderId(), event.amount());
+            // Publish PaymentCompleted
+        } catch (PaymentException e) {
+            // Publish PaymentFailed → triggers compensating action
+        }
+    }
+}
+```
+
+**Choreography vs Orchestration:**
+| Aspect | Choreography | Orchestration |
+|--------|-------------|---------------|
+| Coupling | Low - services react to events | Higher - orchestrator knows all steps |
+| Complexity | Hard to trace full flow | Centralized, easier to understand |
+| Use when | Few steps, simple flows | Many steps, complex compensation |
+
+### CQRS (Command Query Responsibility Segregation)
+**Problem:** Read and write models have different optimization needs
+
+```java
+// ✅ CQRS - separate command and query models
+
+// Command side - normalized, validates business rules
+@Service
+@Transactional
+public class OrderCommandService {
+    private final OrderRepository orderRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
+    public OrderCommandService(OrderRepository orderRepository,
+                                ApplicationEventPublisher eventPublisher) {
+        this.orderRepository = orderRepository;
+        this.eventPublisher = eventPublisher;
+    }
+
+    public Long createOrder(CreateOrderCommand command) {
+        Order order = new Order();
+        order.setCustomerId(command.customerId());
+        order.setStatus(OrderStatus.CREATED);
+        command.items().forEach(order::addItem);
+        order = orderRepository.save(order);
+        eventPublisher.publishEvent(new OrderCreatedEvent(order));
+        return order.getId();
+    }
+}
+
+// Query side - denormalized, optimized for reads
+@Service
+@Transactional(readOnly = true)
+public class OrderQueryService {
+    private final OrderViewRepository viewRepository;
+
+    public OrderQueryService(OrderViewRepository viewRepository) {
+        this.viewRepository = viewRepository;
+    }
+
+    public OrderView findById(Long id) {
+        return viewRepository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Order not found"));
+    }
+
+    public Page<OrderView> findByCustomer(Long customerId, Pageable pageable) {
+        return viewRepository.findByCustomerId(customerId, pageable);
+    }
+}
+
+// Read model - flat, pre-joined
+@Entity
+@Table(name = "order_views")
+public class OrderView {
+    @Id
+    private Long id;
+    private Long customerId;
+    private String customerName;
+    private String status;
+    private BigDecimal totalAmount;
+    private int itemCount;
+    private LocalDateTime createdAt;
+
+    // getters/setters
+}
+
+// Projection updater - keeps query model in sync
+@Component
+public class OrderViewUpdater {
+
+    private final OrderViewRepository viewRepository;
+
+    public OrderViewUpdater(OrderViewRepository viewRepository) {
+        this.viewRepository = viewRepository;
+    }
+
+    @EventListener
+    public void on(OrderCreatedEvent event) {
+        OrderView view = new OrderView();
+        view.setId(event.order().getId());
+        view.setCustomerId(event.order().getCustomerId());
+        view.setStatus(event.order().getStatus().name());
+        view.setTotalAmount(event.order().getTotalAmount());
+        view.setItemCount(event.order().getItems().size());
+        view.setCreatedAt(event.order().getCreatedAt());
+        viewRepository.save(view);
+    }
+}
+```
+
+**When to use CQRS:**
+- Read/write ratio is heavily skewed (many reads, few writes)
+- Read model needs different shape than write model (denormalized views)
+- Different scaling requirements for reads vs writes
+
+**When NOT to use:** Simple CRUD applications - adds unnecessary complexity.
+
+---
+
 ## Pattern Selection Guide
 
 | Situation | Pattern |
@@ -277,8 +520,11 @@ player.play("song.mp3");
 | Object creation is complex | Builder, Factory |
 | Need to add features dynamically | Decorator |
 | Multiple implementations of algorithm | Strategy |
-| React to state changes | Observer |
+| React to state changes | Observer (Spring Events) |
 | Integrate with legacy code | Adapter |
+| Update DB + publish event atomically | Outbox |
+| Distributed transaction across services | Saga |
+| Separate read/write optimization | CQRS |
 
 ## Anti-Patterns to Avoid
 
@@ -287,3 +533,5 @@ player.play("song.mp3");
 | Singleton abuse | Global state, hard to test | Dependency Injection |
 | Factory everywhere | Over-engineering | Simple `new` if type known |
 | Deep decorator chains | Hard to debug | Composition, keep chains short |
+| CQRS for simple CRUD | Unnecessary complexity | Single model, standard repository |
+| Saga without idempotency | Duplicate processing | Idempotent consumers + dedup key |

@@ -21,7 +21,7 @@ Each skill folder contains:
 | Skill | Description |
 |-------|-------------|
 | [code-quality](code-quality/) | Comprehensive code review - clean code principles, API contracts, null safety, exception handling, performance |
-| [design-patterns](design-patterns/) | Common design patterns with Java examples (Factory, Builder, Strategy, Observer, Decorator, Adapter) |
+| [design-patterns](design-patterns/) | Design patterns - classic (Factory, Builder, Strategy, Observer, Decorator, Adapter) and enterprise (Saga, Outbox, CQRS) |
 | [testing-patterns](testing-patterns/) | Testing strategies - JUnit 5, Mockito, MockMvc, Testcontainers, positive and negative test cases |
 
 ### Language & Framework
