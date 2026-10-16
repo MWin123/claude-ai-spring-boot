@@ -146,13 +146,14 @@ class ProductControllerTest {
 
     @Test
     void createProduct_validRequest_returns201() throws Exception {
-        var product = new Product();
-        product.setName("Widget");
-        when(service.create(any())).thenReturn(product);
+        var response = new ProductResponse(1L, "Widget", new BigDecimal("10.00"));
+        when(service.create(any())).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/products")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"name":"Widget","price":10.0}"""))
+                .content("""
+                    {"name":"Widget","price":10.0}
+                    """))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.name").value("Widget"));
     }

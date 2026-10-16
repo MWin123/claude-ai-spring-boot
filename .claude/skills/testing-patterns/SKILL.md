@@ -246,19 +246,19 @@ class ProductIntegrationTest {
             .body(request)
             .exchange()
             .expectStatus().isCreated()
-            .expectBody(Product.class)
+            .expectBody(ProductResponse.class)
             .returnResult()
             .getResponseBody();
 
-        Long id = created.getId();
+        Long id = created.id();
 
         // Read
         restTestClient.get()
             .uri("/api/v1/products/{id}", id)
             .exchange()
             .expectStatus().isOk()
-            .expectBody(Product.class)
-            .value(product -> assertThat(product.getName()).isEqualTo("Widget"));
+            .expectBody(ProductResponse.class)
+            .value(product -> assertThat(product.name()).isEqualTo("Widget"));
 
         // Delete
         restTestClient.delete()
