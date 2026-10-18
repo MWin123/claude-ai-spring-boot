@@ -1,6 +1,6 @@
 {
-  "name": "spring-boot",
-  "displayName": "Spring Boot",
+  "name": "spring-boot-template",
+  "displayName": "Spring Boot Template",
   "description": "Enterprise Spring Boot 4.x development with agents, skills, and best practices for REST APIs, JPA, security, testing, and cloud-native deployment.",
   "version": "1.0.0",
   "author": {

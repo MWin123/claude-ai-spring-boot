@@ -5,8 +5,8 @@ A Claude Code plugin with production-ready skills and agents for building Spring
 ## Installation
 
 ```bash
-# Install from marketplace
-claude plugin install spring-boot
+# Install from Anthropic marketplace
+claude plugin install spring-boot-template@piomin
 
 # Or install directly from repository
 claude plugin install --url https://github.com/piomin/claude-ai-spring-boot
@@ -89,10 +89,10 @@ You can also invoke skills and agents directly:
 
 ```bash
 # Invoke a skill
-> /spring-boot:jpa-patterns
+> /spring-boot-template:jpa-patterns
 
 # Use an agent
-> @agent-spring-boot:code-reviewer
+> @agent-spring-boot-template:code-reviewer
 ```
 
 ## Directory Structure
