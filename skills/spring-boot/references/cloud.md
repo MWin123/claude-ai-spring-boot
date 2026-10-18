@@ -24,14 +24,9 @@ spring:
           uri: https://github.com/example/config-repo
           default-label: main
           search-paths: '{application}'
-          username: <your-git-username>
-          password: <your-git-password>
+          # credentials: configure via environment variables
         native:
           search-locations: classpath:/config
-  security:
-    user:
-      name: config-user
-      password: <your-config-password>
 
 // Config Client
 @SpringBootApplication
@@ -49,8 +44,7 @@ spring:
     import: "configserver:http://localhost:8888"
   cloud:
     config:
-      username: config-user
-      password: <your-config-password>
+      # credentials: configure via environment variables
       fail-fast: true
       retry:
         max-attempts: 6
@@ -453,25 +447,9 @@ data:
   SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-service:5432/mydb"
   MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
   SERVER_SHUTDOWN: "graceful"
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: user-service-secrets
-type: Opaque
-stringData:
-  SPRING_DATASOURCE_USERNAME: "<your-db-username>"
-  SPRING_DATASOURCE_PASSWORD: "<your-db-password>"
 ```
 
-Provide default values in `application.yml` for local development:
-```yaml
-spring:
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydb}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
-```
+Configure datasource credentials via Kubernetes Secrets mounted as environment variables or using Config Tree (see below).
 
 ### Config Tree for Mounted Secrets
 
@@ -484,7 +462,7 @@ spring:
     import: "optional:configtree:/run/secrets/"
 ```
 
-With a Kubernetes Secret mounted at `/run/secrets/`, a key `spring.datasource.password` becomes a file at `/run/secrets/spring.datasource.password`. Spring Boot reads the file content as the property value.
+With a Kubernetes Secret mounted at `/run/secrets/`, each key becomes a file. Spring Boot reads the file content as the property value.
 
 ```yaml
 # Kubernetes volume mount for Config Tree

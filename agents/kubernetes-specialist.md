@@ -108,31 +108,13 @@ data:
   MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
   MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
   SERVER_SHUTDOWN: "graceful"
----
-# Secret - sensitive values (base64 encoded, or use External Secrets Operator)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: <app-name>-secrets
-type: Opaque
-stringData:
-  SPRING_DATASOURCE_USERNAME: "<your-db-username>"
-  SPRING_DATASOURCE_PASSWORD: "<your-db-password>"
-  JWT_SECRET: "<your-jwt-secret>"
 ```
+
+Configure sensitive values (datasource credentials, JWT signing keys) via Kubernetes Secrets mounted as environment variables or using Config Tree.
 
 Spring Boot binds environment variables automatically:
 - `SPRING_DATASOURCE_URL` → `spring.datasource.url`
 - Relaxed binding: `SPRING_JPA_HIBERNATE_DDL_AUTO` → `spring.jpa.hibernate.ddl-auto`
-
-In `application.yml`, provide sensible defaults for local development:
-```yaml
-spring:
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydb}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
-```
 
 ## Actuator for Kubernetes
 
