@@ -39,6 +39,4 @@ build/
 *.log
 
 ### Claude Code ###
-.claude/settings.local.json
-.claude/**/archived/
-.claude/**/*.backup
+.claude/

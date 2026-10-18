@@ -1,10 +1,26 @@
-# Claude Code Template for Spring Boot (v1.0)
+# Spring Boot Plugin for Claude Code (v1.0)
 
-A production-ready template of Claude Code skills and agents for building Spring Boot 4.x / Java 21+ applications. Clone this repo and start generating your app with Claude Code — the skills and agents guide Claude to follow best practices for REST APIs, JPA, security, testing, cloud-native deployment, and Kubernetes.
+A Claude Code plugin with production-ready skills and agents for building Spring Boot 4.x / Java 21+ applications. Install the plugin and start generating your app — the skills and agents guide Claude to follow best practices for REST APIs, JPA, security, testing, cloud-native deployment, and Kubernetes.
+
+## Installation
+
+```bash
+# Install from marketplace
+claude plugin install spring-boot
+
+# Or install directly from repository
+claude plugin install --url https://github.com/piomin/claude-ai-spring-boot
+```
+
+To test locally during development:
+
+```bash
+claude --plugin-dir /path/to/claude-ai-spring-boot
+```
 
 ## What's Included
 
-### Agents (`.claude/agents/`)
+### Agents (`agents/`)
 
 Specialized agents that Claude Code can invoke for specific tasks:
 
@@ -13,16 +29,17 @@ Specialized agents that Claude Code can invoke for specific tasks:
 | `spring-boot-engineer` | Build Spring Boot 4.x apps with layered architecture |
 | `code-reviewer` | Review code for correctness, security, Spring Boot conventions |
 | `kubernetes-specialist` | K8s deployments, probes, ConfigMap/Secret, Prometheus, Skaffold |
-| `devops-engineer` | CI/CD pipelines (CircleCI), Paketo Buildpacks, Skaffold |
+| `devops-engineer` | CI/CD pipelines, Paketo Buildpacks, Skaffold |
 | `docker-expert` | Multi-stage Dockerfiles, Paketo Buildpacks, image optimization |
 | `security-engineer` | Spring Security, OWASP, input validation, SSL Bundles |
 
-### Skills (`.claude/skills/`)
+### Skills (`skills/`)
 
 Reusable knowledge that Claude loads contextually:
 
 | Skill | What it teaches |
 |-------|-----------------|
+| `conventions` | Mandatory project rules: No Lombok, constructor injection, RestClient, testing standards |
 | `spring-boot` | Core Spring Boot development with 5 reference guides (web, data, security, cloud, testing) |
 | `code-quality` | Clean code principles, API contracts, null safety, exception handling |
 | `design-patterns` | Classic patterns (Factory, Builder, Strategy) + enterprise (Saga, Outbox, CQRS) |
@@ -33,7 +50,7 @@ Reusable knowledge that Claude loads contextually:
 
 ### Key Conventions
 
-The template enforces these rules via `CLAUDE.md`:
+The plugin enforces these rules via the `conventions` skill:
 
 - **No Lombok** — explicit constructors, getters/setters, `LoggerFactory.getLogger()`
 - **Constructor injection** — no `@Autowired` on fields
@@ -42,7 +59,8 @@ The template enforces these rules via `CLAUDE.md`:
 - **Testcontainers** with `@ServiceConnection` (not `@DynamicPropertySource`)
 - **Jakarta Persistence** (not `javax.persistence`)
 - **Maven** with `pl.piomin.services` group ID
-- **CircleCI** for CI/CD, Docker Compose for local dependencies
+- **CI pipeline** — auto-detected from existing project config
+- **Docker Compose** for local dependencies
 
 ### Cloud-Native Coverage
 
@@ -59,49 +77,61 @@ The `cloud.md` reference covers:
 
 ## Usage
 
-1. Clone this repository
-2. Start Claude Code in the project directory
-3. Describe what you want to build — Claude will use the skills and agents automatically
+After installing, describe what you want to build — Claude will use the skills and agents automatically:
 
 ```bash
-git clone https://github.com/piomin/claude-ai-spring-boot.git my-app
-cd my-app
+cd my-project
 claude
+> "Build a REST API for managing orders with PostgreSQL"
+```
+
+You can also invoke skills and agents directly:
+
+```bash
+# Invoke a skill
+> /spring-boot:jpa-patterns
+
+# Use an agent
+> @agent-spring-boot:code-reviewer
 ```
 
 ## Directory Structure
 
 ```
 .
-├── .claude
-│   ├── agents
-│   │   ├── code-reviewer.md
-│   │   ├── devops-engineer.md
-│   │   ├── docker-expert.md
-│   │   ├── kubernetes-specialist.md
-│   │   ├── security-engineer.md
-│   │   └── spring-boot-engineer.md
-│   └── skills
-│       ├── README.md
-│       ├── code-quality/SKILL.md
-│       ├── design-patterns/SKILL.md
-│       ├── java-modern/SKILL.md
-│       ├── jpa-patterns/SKILL.md
-│       ├── logging-patterns/SKILL.md
-│       ├── spring-boot
-│       │   ├── SKILL.md
-│       │   └── references
-│       │       ├── cloud.md
-│       │       ├── data.md
-│       │       ├── security.md
-│       │       ├── testing.md
-│       │       └── web.md
-│       └── testing-patterns/SKILL.md
-├── CLAUDE.md
+├── .claude-plugin/
+│   └── plugin.json
+├── agents/
+│   ├── code-reviewer.md
+│   ├── devops-engineer.md
+│   ├── docker-expert.md
+│   ├── kubernetes-specialist.md
+│   ├── security-engineer.md
+│   └── spring-boot-engineer.md
+├── skills/
+│   ├── conventions/SKILL.md
+│   ├── code-quality/SKILL.md
+│   ├── design-patterns/SKILL.md
+│   ├── java-modern/SKILL.md
+│   ├── jpa-patterns/SKILL.md
+│   ├── logging-patterns/SKILL.md
+│   ├── spring-boot/
+│   │   ├── SKILL.md
+│   │   └── references/
+│   │       ├── cloud.md
+│   │       ├── data.md
+│   │       ├── security.md
+│   │       ├── testing.md
+│   │       └── web.md
+│   └── testing-patterns/SKILL.md
 ├── README.md
-└── pom.xml
+└── LICENSE
 ```
 
 ## Blog Post
 
-You can find a detailed explanation of this template in the post: [Claude Code Template for Spring Boot](https://piotrminkowski.com/2026/03/24/claude-code-template-for-spring-boot/).
+You can find a detailed explanation of this plugin in the post: [Claude Code Template for Spring Boot](https://piotrminkowski.com/2026/03/24/claude-code-template-for-spring-boot/).
+
+## License
+
+Apache License 2.0
