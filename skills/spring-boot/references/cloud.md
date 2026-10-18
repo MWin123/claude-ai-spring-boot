@@ -24,14 +24,14 @@ spring:
           uri: https://github.com/example/config-repo
           default-label: main
           search-paths: '{application}'
-          username: ${GIT_USERNAME}
-          password: ${GIT_PASSWORD}
+          username: <your-git-username>
+          password: <your-git-password>
         native:
           search-locations: classpath:/config
   security:
     user:
       name: config-user
-      password: ${CONFIG_PASSWORD}
+      password: <your-config-password>
 
 // Config Client
 @SpringBootApplication
@@ -50,7 +50,7 @@ spring:
   cloud:
     config:
       username: config-user
-      password: ${CONFIG_PASSWORD}
+      password: <your-config-password>
       fail-fast: true
       retry:
         max-attempts: 6
@@ -460,8 +460,8 @@ metadata:
   name: user-service-secrets
 type: Opaque
 stringData:
-  SPRING_DATASOURCE_USERNAME: "app_user"
-  SPRING_DATASOURCE_PASSWORD: "changeme"
+  SPRING_DATASOURCE_USERNAME: "<your-db-username>"
+  SPRING_DATASOURCE_PASSWORD: "<your-db-password>"
 ```
 
 Provide default values in `application.yml` for local development:

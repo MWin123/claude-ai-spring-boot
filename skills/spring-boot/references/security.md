@@ -130,6 +130,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 ```java
 @Service
 public class JwtService {
+    // Externalize via env var or mounted secret — never hardcode
     @Value("${jwt.secret}")
     private String secretKey;
 
@@ -515,7 +516,7 @@ spring:
           reload-on-update: true
           keystore:
             location: classpath:keystore.p12
-            password: ${KEYSTORE_PASSWORD}
+            password: <your-keystore-password>
             type: PKCS12
 ```
 

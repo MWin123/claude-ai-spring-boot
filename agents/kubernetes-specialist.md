@@ -116,9 +116,9 @@ metadata:
   name: <app-name>-secrets
 type: Opaque
 stringData:
-  SPRING_DATASOURCE_USERNAME: "app_user"
-  SPRING_DATASOURCE_PASSWORD: "changeme"
-  JWT_SECRET: "changeme"
+  SPRING_DATASOURCE_USERNAME: "<your-db-username>"
+  SPRING_DATASOURCE_PASSWORD: "<your-db-password>"
+  JWT_SECRET: "<your-jwt-secret>"
 ```
 
 Spring Boot binds environment variables automatically:
