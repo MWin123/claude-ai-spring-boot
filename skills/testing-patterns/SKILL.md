@@ -47,14 +47,13 @@ class OrderServiceTest {
         var request = new OrderRequest(List.of(
             new OrderItem(1L, 2)
         ));
-        var product = new Product();
-        product.setId(1L);
-        product.setPrice(new BigDecimal("10.00"));
+        var product = Product.builder().price(new BigDecimal("10.00")).build();
+        ReflectionTestUtils.setField(product, "id", 1L);   // generated id has no setter
 
         when(productService.findById(1L)).thenReturn(product);
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
             Order o = inv.getArgument(0);
-            o.setId(1L);
+            ReflectionTestUtils.setField(o, "id", 1L);
             return o;
         });
 
@@ -108,26 +107,26 @@ class ProductControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private ProductService productService;
 
+    // Jackson 3: tools.jackson.databind.json.JsonMapper (not com.fasterxml.jackson.databind)
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper jsonMapper;
 
     // ✅ Positive - successful creation
     @Test
     @DisplayName("POST /api/v1/products - returns 201")
     void createProduct_validRequest_returns201() throws Exception {
         var request = new ProductRequest("Widget", new BigDecimal("10.00"));
-        var product = new Product();
-        product.setId(1L);
-        product.setName("Widget");
+        var product = Product.builder().name("Widget").build();
+        ReflectionTestUtils.setField(product, "id", 1L);
 
         when(productService.create(any())).thenReturn(product);
 
         mockMvc.perform(post("/api/v1/products")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(jsonMapper.writeValueAsString(request)))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.name").value("Widget"));
     }
@@ -140,7 +139,7 @@ class ProductControllerTest {
 
         mockMvc.perform(post("/api/v1/products")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(jsonMapper.writeValueAsString(request)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.name").exists());
 
@@ -184,9 +183,10 @@ class ProductRepositoryTest {
     @DisplayName("Should find products by name containing")
     void shouldFindByNameContaining() {
         // Given
-        var product = new Product();
-        product.setName("Spring Widget");
-        product.setPrice(new BigDecimal("10.00"));
+        var product = Product.builder()
+            .name("Spring Widget")
+            .price(new BigDecimal("10.00"))
+            .build();
         entityManager.persistAndFlush(product);
 
         // When

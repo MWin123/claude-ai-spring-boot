@@ -1,6 +1,6 @@
 ---
 name: conventions
-description: Spring Boot project conventions and mandatory rules. Auto-loads when working with Spring Boot, Java, or Maven projects. Enforces No-Lombok, constructor injection, RestClient, and other standards.
+description: Spring Boot project conventions and mandatory rules. Auto-loads when working with Spring Boot, Java, or Maven projects. Enforces records-first/targeted Lombok, constructor injection, RestClient, and other standards.
 metadata:
   version: "1.0.0"
   domain: backend
@@ -16,7 +16,7 @@ These conventions apply to ALL code generated or reviewed in the project. Follow
 
 ## Mandatory Rules
 
-- **No Lombok** — write explicit constructors, getters, setters; use `LoggerFactory.getLogger()` for loggers
+- **Records first, Lombok targeted** — records for DTOs/value types; Lombok only where a record cannot replace the boilerplate, following the Lombok rules in the `java-modern` skill (`@Slf4j` for loggers; never `@Data`/`@EqualsAndHashCode`/`@ToString`/`@Value` on entities)
 - **Constructor injection** — no `@Autowired` on fields
 - **RestClient** over RestTemplate/WebClient for blocking HTTP calls
 - **RestTestClient** with `@AutoConfigureRestTestClient` for integration tests
@@ -24,11 +24,11 @@ These conventions apply to ALL code generated or reviewed in the project. Follow
 - **Jakarta Persistence** (not `javax.persistence`)
 - **Java records** for DTOs (request/response objects)
 - **Maven** for dependency management
-- **Group ID**: `pl.piomin.services`
+- **Base Java package** = group ID from `pom.xml` (ask the user if there is no `pom.xml`)
 - **Artifact name** = parent directory name
 - **Semantic versioning** — bump PATCH on each new version
 - **Docker Compose** for local dependencies
-- **CI pipeline** — generate CI/CD config; detect existing CI setup (`.github/workflows/`, `.circleci/`, `.gitlab-ci.yml`) and match it, or default to a sensible choice
+- **CI pipeline** — never generate one unprompted; when asked (or when one exists), detect the existing CI setup (`.github/workflows/`, `.circleci/`, `.gitlab-ci.yml`) and match or extend it
 - **Tests** — always write both positive and negative test cases
 - Update `README.md` on each new version
 

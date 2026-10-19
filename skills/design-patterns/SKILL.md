@@ -34,47 +34,29 @@ Quick reference for common design patterns in Java.
 **Problem:** Telescoping constructors, many optional parameters
 
 ```java
-// ✅ Builder pattern
-public class User {
-    private final String name;  // required
-    private final String email; // required
-    private final int age;      // optional
+// ✅ Many optional parameters: Lombok @Builder works on records
+@Builder
+public record SearchCriteria(String name, String email, Integer minAge, Integer maxAge) { }
 
-    private User(Builder builder) {
-        this.name = builder.name;
-        this.email = builder.email;
-        this.age = builder.age;
+SearchCriteria criteria = SearchCriteria.builder().name("John").minAge(18).build();
+
+// ✅ Few optional parameters: record with compact constructor + static factory (no builder needed)
+public record User(String name, String email, int age) {
+    public User {                                   // validation in compact constructor
+        Objects.requireNonNull(name);
+        Objects.requireNonNull(email);
     }
 
-    public static Builder builder(String name, String email) {
-        return new Builder(name, email);
+    public static User of(String name, String email) {
+        return new User(name, email, 0);             // default for optional field
     }
 
-    public static class Builder {
-        private final String name;
-        private final String email;
-        private int age = 0;
-
-        private Builder(String name, String email) {
-            this.name = name;
-            this.email = email;
-        }
-
-        public Builder age(int age) {
-            this.age = age;
-            return this;
-        }
-
-        public User build() {
-            return new User(this);
-        }
+    public User withAge(int age) {                   // "wither" for a single optional field
+        return new User(name, email, age);
     }
 }
 
-// Usage
-User user = User.builder("John", "john@example.com")
-    .age(30)
-    .build();
+User user = User.of("John", "john@example.com").withAge(30);
 ```
 
 ### Factory
@@ -130,25 +112,24 @@ public interface PaymentStrategy {
     void pay(BigDecimal amount);
 }
 
-public class CreditCardPayment implements PaymentStrategy {
-    private final String cardNumber;
-
-    public CreditCardPayment(String cardNumber) {
-        this.cardNumber = cardNumber;
-    }
-
+public record CreditCardPayment(String cardNumber) implements PaymentStrategy {
     @Override
     public void pay(BigDecimal amount) {
-        System.out.println("Paid " + amount + " with card " + cardNumber);
+        System.out.println("Paid " + amount + " with " + this);
+    }
+
+    // records print all components; never log a full card number
+    @Override
+    public String toString() {
+        String last4 = cardNumber == null || cardNumber.length() < 4
+            ? "" : cardNumber.substring(cardNumber.length() - 4);
+        return "CreditCardPayment[****" + last4 + "]";
     }
 }
 
+@Setter
 public class ShoppingCart {
     private PaymentStrategy paymentStrategy;
-
-    public void setPaymentStrategy(PaymentStrategy strategy) {
-        this.paymentStrategy = strategy;
-    }
 
     public void checkout(BigDecimal total) {
         paymentStrategy.pay(total);
@@ -223,20 +204,24 @@ public class SimpleCoffee implements Coffee {
     public BigDecimal getCost() { return new BigDecimal("2.00"); }
 }
 
-public abstract class CoffeeDecorator implements Coffee {
-    protected final Coffee coffee;
-    public CoffeeDecorator(Coffee coffee) { this.coffee = coffee; }
-}
-
-public class MilkDecorator extends CoffeeDecorator {
-    public MilkDecorator(Coffee coffee) { super(coffee); }
-
+// Decorators as records: the wrapped coffee is the only state
+public record MilkDecorator(Coffee coffee) implements Coffee {
     public String getDescription() {
         return coffee.getDescription() + ", Milk";
     }
 
     public BigDecimal getCost() {
         return coffee.getCost().add(new BigDecimal("0.50"));
+    }
+}
+
+public record SugarDecorator(Coffee coffee) implements Coffee {
+    public String getDescription() {
+        return coffee.getDescription() + ", Sugar";
+    }
+
+    public BigDecimal getCost() {
+        return coffee.getCost().add(new BigDecimal("0.20"));
     }
 }
 
@@ -261,9 +246,7 @@ public class LegacyAudioPlayer {
 }
 
 // Adapter
-public class Mp3PlayerAdapter implements MediaPlayer {
-    private final LegacyAudioPlayer legacyPlayer = new LegacyAudioPlayer();
-
+public record Mp3PlayerAdapter(LegacyAudioPlayer legacyPlayer) implements MediaPlayer {
     @Override
     public void play(String filename) {
         legacyPlayer.playMp3(filename);
@@ -271,7 +254,7 @@ public class Mp3PlayerAdapter implements MediaPlayer {
 }
 
 // Usage
-MediaPlayer player = new Mp3PlayerAdapter();
+MediaPlayer player = new Mp3PlayerAdapter(new LegacyAudioPlayer());
 player.play("song.mp3");
 ```
 
@@ -305,14 +288,10 @@ public class OutboxEvent {
 }
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final OrderRepository orderRepository;
     private final OutboxEventRepository outboxRepository;
-
-    public OrderService(OrderRepository orderRepository, OutboxEventRepository outboxRepository) {
-        this.orderRepository = orderRepository;
-        this.outboxRepository = outboxRepository;
-    }
 
     @Transactional
     public Order createOrder(OrderRequest request) {
@@ -335,15 +314,10 @@ public class OrderService {
 
 // Poller publishes events and marks them as published
 @Component
+@RequiredArgsConstructor
 public class OutboxPoller {
     private final OutboxEventRepository outboxRepository;
     private final KafkaTemplate<String, String> kafka;
-
-    public OutboxPoller(OutboxEventRepository outboxRepository,
-                        KafkaTemplate<String, String> kafka) {
-        this.outboxRepository = outboxRepository;
-        this.kafka = kafka;
-    }
 
     @Scheduled(fixedDelay = 1000)
     @Transactional
@@ -364,14 +338,10 @@ public class OutboxPoller {
 // ✅ Choreography-based saga - each service listens and reacts
 // Order Service publishes OrderCreated
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final ApplicationEventPublisher eventPublisher;
     private final OrderRepository orderRepository;
-
-    public OrderService(ApplicationEventPublisher eventPublisher, OrderRepository orderRepository) {
-        this.eventPublisher = eventPublisher;
-        this.orderRepository = orderRepository;
-    }
 
     @Transactional
     public Order createOrder(OrderRequest request) {
@@ -392,12 +362,9 @@ public class OrderService {
 
 // Payment Service listens to OrderCreated, publishes PaymentCompleted or PaymentFailed
 @Component
+@RequiredArgsConstructor
 public class PaymentEventHandler {
     private final PaymentService paymentService;
-
-    public PaymentEventHandler(PaymentService paymentService) {
-        this.paymentService = paymentService;
-    }
 
     @KafkaListener(topics = "order-events")
     public void handleOrderCreated(OrderCreatedEvent event) {
@@ -427,15 +394,10 @@ public class PaymentEventHandler {
 // Command side - normalized, validates business rules
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class OrderCommandService {
     private final OrderRepository orderRepository;
     private final ApplicationEventPublisher eventPublisher;
-
-    public OrderCommandService(OrderRepository orderRepository,
-                                ApplicationEventPublisher eventPublisher) {
-        this.orderRepository = orderRepository;
-        this.eventPublisher = eventPublisher;
-    }
 
     public Long createOrder(CreateOrderCommand command) {
         Order order = new Order();
@@ -451,12 +413,9 @@ public class OrderCommandService {
 // Query side - denormalized, optimized for reads
 @Service
 @Transactional(readOnly = true)
+@RequiredArgsConstructor
 public class OrderQueryService {
     private final OrderViewRepository viewRepository;
-
-    public OrderQueryService(OrderViewRepository viewRepository) {
-        this.viewRepository = viewRepository;
-    }
 
     public OrderView findById(Long id) {
         return viewRepository.findById(id)
@@ -486,13 +445,9 @@ public class OrderView {
 
 // Projection updater - keeps query model in sync
 @Component
+@RequiredArgsConstructor
 public class OrderViewUpdater {
-
     private final OrderViewRepository viewRepository;
-
-    public OrderViewUpdater(OrderViewRepository viewRepository) {
-        this.viewRepository = viewRepository;
-    }
 
     @EventListener
     public void on(OrderCreatedEvent event) {
