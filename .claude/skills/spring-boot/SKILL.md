@@ -25,13 +25,19 @@ Enterprise Spring Boot 4.x development with focus on clean architecture and prod
 
 ## Quick Start Templates
 
+Modern Java first: DTOs are records; Lombok only for `@Slf4j` and `@RequiredArgsConstructor` (plus `@Getter`/`@Setter` and `@Builder` where useful); entities use only the safe Lombok subset (see `java-modern` skill).
+
 ### Entity
 ```java
 @Entity
 @Table(name = "products")
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     @NotBlank
@@ -40,7 +46,7 @@ public class Product {
     @DecimalMin("0.0")
     private BigDecimal price;
 
-    // Getters/Setters (no Lombok)
+    // equals/hashCode: write by hand, id-based (never @Data/@EqualsAndHashCode)
 }
 ```
 
@@ -54,13 +60,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 ### Service
 ```java
 @Service
+@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ProductService {
     private final ProductRepository repo;
-
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
-    }
 
     public List<ProductResponse> search(String name) {
         return repo.findByNameContainingIgnoreCase(name).stream()
@@ -83,12 +86,9 @@ public class ProductService {
 @RestController
 @RequestMapping("/api/v1/products")
 @Validated
+@RequiredArgsConstructor
 public class ProductController {
     private final ProductService service;
-
-    public ProductController(ProductService service) {
-        this.service = service;
-    }
 
     @GetMapping
     public List<ProductResponse> search(@RequestParam(defaultValue = "") String name) {
@@ -142,7 +142,7 @@ public class GlobalExceptionHandler {
 @WebMvcTest(ProductController.class)
 class ProductControllerTest {
     @Autowired MockMvc mockMvc;
-    @MockBean ProductService service;
+    @MockitoBean ProductService service;
 
     @Test
     void createProduct_validRequest_returns201() throws Exception {
@@ -168,14 +168,16 @@ Load detailed patterns based on context:
 |-------|-----------|-------------|
 | Web/REST | `references/web.md` | Controllers, validation, exception handling, Problem Details (RFC 7807) |
 | Data Access | `references/data.md` | JPA, repositories, transactions, queries |
-| Security | `references/security.md` | Spring Security 6, OAuth2, JWT, auth |
+| Security | `references/security.md` | Spring Security 7, OAuth2, JWT, auth |
 | Cloud/Config | `references/cloud.md` | Config server, discovery, resilience, virtual threads, HTTP interfaces, GraalVM native, OTLP tracing |
+| Boot 4 | `references/boot4.md` | Modular starters, Jackson 3, @MockitoBean, @ImportHttpServices, API versioning, JSpecify |
 | Testing | `references/testing.md` | Unit, integration, slice tests, Testcontainers @ServiceConnection |
 
 ## Constraints
 
 ### MUST DO
-- Constructor injection (no field injection)
+- Constructor injection (no field injection), generated with Lombok `@RequiredArgsConstructor`
+- Records for DTOs, Lombok only for boilerplate a record cannot replace, only the safe Lombok subset on `@Entity` classes
 - `@Valid` on all request bodies
 - `@Transactional` for multi-step writes
 - `@Transactional(readOnly = true)` for reads
@@ -189,13 +191,16 @@ Load detailed patterns based on context:
 - Mix blocking and reactive code
 - Store secrets in application.properties
 - Use deprecated Spring Boot 2.x/3.x patterns
+- Use `@MockBean`/`@SpyBean` (use `@MockitoBean`/`@MockitoSpyBean`)
+- Use `com.fasterxml.jackson.databind` (Jackson 3: `tools.jackson.databind`)
+- Use classic starters such as `spring-boot-starter-web` (use `spring-boot-starter-webmvc` plus matching `-test` starters)
 - Hardcode URLs, credentials, environment values
 
 ## Architecture Patterns
 
 **Project Structure:**
 ```
-src/main/java/pl/piomin/services/
+src/main/java/com/example/
 ├── controller/     # REST endpoints
 ├── service/        # Business logic
 ├── repository/     # Data access
@@ -234,12 +239,9 @@ src/main/java/pl/piomin/services/
 ```java
 @RestController
 @RequestMapping("/api/v1/orders")
+@RequiredArgsConstructor
 public class OrderController {
     private final OrderService orderService;
-
-    public OrderController(OrderService orderService) {
-        this.orderService = orderService;
-    }
 
     @GetMapping("/{id}")
     public Mono<ResponseEntity<OrderDto>> getOrder(@PathVariable UUID id) {
