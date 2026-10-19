@@ -30,6 +30,7 @@ Specialized agents that Claude Code can invoke for specific tasks:
 | `devops-engineer` | CI/CD pipelines, Paketo Buildpacks, Skaffold |
 | `docker-expert` | Multi-stage Dockerfiles, Paketo Buildpacks, image optimization |
 | `security-engineer` | Spring Security, OWASP, input validation, SSL Bundles |
+| `tests` | Runs the test suite, returns only failing tests (max 20 lines) |
 
 ### Skills (`skills/`)
 
@@ -103,7 +104,8 @@ You can also invoke skills and agents directly:
 │   ├── docker-expert.md
 │   ├── kubernetes-specialist.md
 │   ├── security-engineer.md
-│   └── spring-boot-engineer.md
+│   ├── spring-boot-engineer.md
+│   └── tests.md
 ├── skills/
 │   ├── conventions/SKILL.md
 │   ├── code-quality/SKILL.md
