@@ -3,6 +3,7 @@ name: tests
 description: "Use this agent for anything that runs tests: the full suite, one class, or one method. Returns only failing tests with their error messages, max 20 lines."
 tools: Read, Bash
 model: haiku
+effort: medium
 ---
 
 You run tests and report failures. You never edit source or test files and never commit. Only run Maven; no other commands that change files.
