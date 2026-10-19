@@ -1,4 +1,4 @@
-# Security - Spring Security 6
+# Security - Spring Security 7
 
 ## Security Configuration
 
@@ -66,16 +66,11 @@ public class SecurityConfig {
 
 ```java
 @Component
+@Slf4j
+@RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
-
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
-
-    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService) {
-        this.jwtService = jwtService;
-        this.userDetailsService = userDetailsService;
-    }
 
     @Override
     protected void doFilterInternal(
@@ -149,10 +144,9 @@ public class JwtService {
     }
 
     public String generateToken(UserDetails userDetails) {
-        Map<String, Object> extraClaims = new HashMap<>();
-        extraClaims.put("roles", userDetails.getAuthorities().stream()
+        Map<String, Object> extraClaims = Map.of("roles", userDetails.getAuthorities().stream()
             .map(GrantedAuthority::getAuthority)
-            .collect(Collectors.toList()));
+            .toList());
 
         return generateToken(extraClaims, userDetails);
     }
@@ -164,7 +158,7 @@ public class JwtService {
     }
 
     public String generateRefreshToken(UserDetails userDetails) {
-        return buildToken(new HashMap<>(), userDetails, refreshExpiration);
+        return buildToken(Map.of(), userDetails, refreshExpiration);
     }
 
     private String buildToken(
@@ -214,12 +208,9 @@ public class JwtService {
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {
     private final UserRepository userRepository;
-
-    public CustomUserDetailsService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
 
     @Override
     @Transactional(readOnly = true)
@@ -234,7 +225,7 @@ public class CustomUserDetailsService implements UserDetailsService {
             .password(user.getPassword())
             .authorities(user.getRoles().stream()
                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
-                .collect(Collectors.toList()))
+                .toList())
             .accountExpired(false)
             .accountLocked(!user.getActive())
             .credentialsExpired(false)
@@ -249,12 +240,9 @@ public class CustomUserDetailsService implements UserDetailsService {
 ```java
 @RestController
 @RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class AuthenticationController {
     private final AuthenticationService authenticationService;
-
-    public AuthenticationController(AuthenticationService authenticationService) {
-        this.authenticationService = authenticationService;
-    }
 
     @PostMapping("/register")
     public ResponseEntity<AuthenticationResponse> register(
@@ -291,21 +279,12 @@ public class AuthenticationController {
 ```java
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class AuthenticationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
-
-    public AuthenticationService(UserRepository userRepository,
-                                  PasswordEncoder passwordEncoder,
-                                  JwtService jwtService,
-                                  AuthenticationManager authenticationManager) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-        this.authenticationManager = authenticationManager;
-    }
 
     public AuthenticationResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
@@ -370,7 +349,7 @@ public class AuthenticationService {
             .password(user.getPassword())
             .authorities(user.getRoles().stream()
                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
-                .collect(Collectors.toList()))
+                .toList())
             .build();
     }
 }
@@ -380,12 +359,9 @@ public class AuthenticationService {
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
-
-    public UserService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
 
     @PreAuthorize("hasRole('ADMIN')")
     public List<User> getAllUsers() {
@@ -460,7 +436,7 @@ public class OAuth2ResourceServerConfig {
 
 ## SSL Bundles & Certificate Hot Reload
 
-Spring Boot 3.1+ provides unified SSL configuration via SSL Bundles, with automatic reload when certificates change on disk.
+Spring Boot provides unified SSL configuration (since 3.1, available in 4.x) via SSL Bundles, with automatic reload when certificates change on disk.
 
 ### PEM-based SSL Bundle (e.g., cert-manager on Kubernetes)
 

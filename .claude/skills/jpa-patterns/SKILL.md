@@ -208,7 +208,7 @@ public class OrderService {
 // ✅ Avoid lazy loading entirely - query only what you need
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-    @Query("SELECT new pl.piomin.services.dto.OrderSummary(o.id, o.status, SIZE(o.items)) " +
+    @Query("SELECT new com.example.dto.OrderSummary(o.id, o.status, SIZE(o.items)) " +
            "FROM Order o WHERE o.id = :id")
     Optional<OrderSummary> findSummaryById(@Param("id") Long id);
 }
@@ -223,12 +223,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 ```java
 @Service
 @Transactional(readOnly = true)  // Default for all methods
+@RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
-
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
-    }
 
     public List<Product> findAll() {
         return repo.findAll();  // Read-only: skips dirty checking
@@ -264,12 +261,9 @@ public class OrderService {
 
 // ✅ GOOD: Extract to separate bean
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final OrderProcessor processor;
-
-    public OrderService(OrderProcessor processor) {
-        this.processor = processor;
-    }
 
     public void processOrders(List<Long> ids) {
         for (Long id : ids) {
@@ -309,12 +303,9 @@ public class Product {
 
 // Handling optimistic lock failure
 @Service
+@RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
-
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
-    }
 
     @Transactional
     public Product updatePrice(Long id, BigDecimal newPrice) {
@@ -392,7 +383,7 @@ public record ProductSummary(Long id, String name, BigDecimal price) {}
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-    @Query("SELECT new pl.piomin.services.dto.ProductSummary(p.id, p.name, p.price) " +
+    @Query("SELECT new com.example.dto.ProductSummary(p.id, p.name, p.price) " +
            "FROM Product p WHERE p.price > :minPrice")
     List<ProductSummary> findExpensiveProducts(@Param("minPrice") BigDecimal minPrice);
 }

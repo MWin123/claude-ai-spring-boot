@@ -13,7 +13,7 @@ Specialized agents that Claude Code can invoke for specific tasks:
 | `spring-boot-engineer` | Build Spring Boot 4.x apps with layered architecture |
 | `code-reviewer` | Review code for correctness, security, Spring Boot conventions |
 | `kubernetes-specialist` | K8s deployments, probes, ConfigMap/Secret, Prometheus, Skaffold |
-| `devops-engineer` | CI/CD pipelines (CircleCI), Paketo Buildpacks, Skaffold |
+| `devops-engineer` | CI/CD pipelines (GitHub Actions), Paketo Buildpacks, Skaffold |
 | `docker-expert` | Multi-stage Dockerfiles, Paketo Buildpacks, image optimization |
 | `security-engineer` | Spring Security, OWASP, input validation, SSL Bundles |
 
@@ -23,26 +23,26 @@ Reusable knowledge that Claude loads contextually:
 
 | Skill | What it teaches |
 |-------|-----------------|
-| `spring-boot` | Core Spring Boot development with 5 reference guides (web, data, security, cloud, testing) |
+| `spring-boot` | Core Spring Boot development with 6 reference guides (web, data, security, cloud, testing, Boot 4 changes) |
 | `code-quality` | Clean code principles, API contracts, null safety, exception handling |
 | `design-patterns` | Classic patterns (Factory, Builder, Strategy) + enterprise (Saga, Outbox, CQRS) |
 | `testing-patterns` | JUnit 5, Mockito, MockMvc, RestTestClient, Testcontainers with @ServiceConnection |
-| `java-modern` | Java 21+ features: records, sealed classes, pattern matching, virtual threads |
-| `jpa-patterns` | JPA/Hibernate pitfalls (N+1, lazy loading), Hibernate 6/7, optimistic locking |
+| `java-modern` | Java 21+ features: records, Lombok rules, sealed classes, pattern matching, virtual threads |
+| `jpa-patterns` | JPA/Hibernate pitfalls (N+1, lazy loading), Hibernate 7, optimistic locking |
 | `logging-patterns` | Structured JSON logging, SLF4J, MDC, AI-friendly formats |
 
 ### Key Conventions
 
 The template enforces these rules via `CLAUDE.md`:
 
-- **No Lombok** — explicit constructors, getters/setters, `LoggerFactory.getLogger()`
+- **Modern Java first, Lombok targeted** — records for DTOs and value types; Lombok only for `@Slf4j` (always), `@RequiredArgsConstructor`, `@Getter`/`@Setter` and `@Builder` where useful; on JPA entities only the safe subset (never `@Data`/`@EqualsAndHashCode`/`@ToString`/`@Value`; `@Builder` needs `@NoArgsConstructor`)
 - **Constructor injection** — no `@Autowired` on fields
 - **RestClient** over RestTemplate/WebClient for blocking HTTP calls
 - **RestTestClient** with `@AutoConfigureRestTestClient` for integration tests
 - **Testcontainers** with `@ServiceConnection` (not `@DynamicPropertySource`)
 - **Jakarta Persistence** (not `javax.persistence`)
-- **Maven** with `pl.piomin.services` group ID
-- **CircleCI** for CI/CD, Docker Compose for local dependencies
+- **Maven**; base Java package = group ID from `pom.xml` (asked for if missing); `artifactId` should match the folder name (asked about if it differs)
+- **GitHub Actions** for CI/CD, Docker Compose for local dependencies
 
 ### Cloud-Native Coverage
 
@@ -98,8 +98,7 @@ claude
 │       │       └── web.md
 │       └── testing-patterns/SKILL.md
 ├── CLAUDE.md
-├── README.md
-└── pom.xml
+└── README.md
 ```
 
 ## Blog Post
