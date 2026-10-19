@@ -11,3 +11,6 @@
 - `pom.xml`: artifactId = parent directory name (if it differs, ask; never rename silently); base package = group ID. If there is no `pom.xml`, ask for the group ID and starting version first.
 - Semantic versioning: bump PATCH on each new version and update README.md.
 - Docker Compose: extend an existing `compose.yaml`/`docker-compose.yml`, otherwise generate `compose.yaml` with all needed components.
+
+## Subagents
+- Anything that runs tests goes to `tests`. Relay its summary, never raw output.
