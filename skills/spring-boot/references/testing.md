@@ -26,10 +26,11 @@ class UserServiceTest {
             25
         );
 
-        User user = new User();
-        user.setId(1L);
-        user.setEmail(request.email());
-        user.setUsername(request.username());
+        User user = User.builder()
+            .email(request.email())
+            .username(request.username())
+            .build();
+        ReflectionTestUtils.setField(user, "id", 1L);   // id has no setter
 
         when(userRepository.existsByEmail(request.email())).thenReturn(false);
         when(passwordEncoder.encode(request.password())).thenReturn("encodedPassword");
@@ -151,11 +152,12 @@ class UserControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private UserService userService;
 
+    // Jackson 3: tools.jackson.databind.json.JsonMapper (not com.fasterxml.jackson.databind)
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper jsonMapper;
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -206,7 +208,7 @@ class UserControllerTest {
         // When & Then
         mockMvc.perform(post("/api/v1/users")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content(jsonMapper.writeValueAsString(request)))
             .andExpect(status().isCreated())
             .andExpect(header().exists("Location"))
             .andExpect(jsonPath("$.email").value(request.email()))
@@ -243,11 +245,11 @@ class UserRepositoryTest {
     @DisplayName("Should find user by email")
     void shouldFindUserByEmail() {
         // Given
-        User user = new User();
-        user.setEmail("test@example.com");
-        user.setPassword("password");
-        user.setUsername("testuser");
-        user.setActive(true);
+        User user = User.builder()
+            .email("test@example.com")
+            .password("password")
+            .username("testuser")
+            .build();
 
         entityManager.persistAndFlush(user);
 
@@ -263,11 +265,11 @@ class UserRepositoryTest {
     @DisplayName("Should check if email exists")
     void shouldCheckIfEmailExists() {
         // Given
-        User user = new User();
-        user.setEmail("test@example.com");
-        user.setPassword("password");
-        user.setUsername("testuser");
-        user.setActive(true);
+        User user = User.builder()
+            .email("test@example.com")
+            .password("password")
+            .username("testuser")
+            .build();
 
         entityManager.persistAndFlush(user);
 
@@ -286,11 +288,11 @@ class UserRepositoryTest {
         adminRole.setName("ADMIN");
         entityManager.persist(adminRole);
 
-        User user = new User();
-        user.setEmail("admin@example.com");
-        user.setPassword("password");
-        user.setUsername("admin");
-        user.setActive(true);
+        User user = User.builder()
+            .email("admin@example.com")
+            .password("password")
+            .username("admin")
+            .build();
         user.setRoles(Set.of(adminRole));
 
         entityManager.persistAndFlush(user);
@@ -401,7 +403,7 @@ class UserReactiveControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean
     private UserReactiveService userService;
 
     @Test
@@ -524,11 +526,11 @@ public class TestConfig {
 public class TestDataFactory {
 
     public static User createUser(String email, String username) {
-        User user = new User();
-        user.setEmail(email);
-        user.setPassword("encodedPassword");
-        user.setUsername(username);
-        user.setActive(true);
+        User user = User.builder()
+            .email(email)
+            .password("encodedPassword")
+            .username(username)
+            .build();
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         return user;
@@ -554,7 +556,7 @@ public class TestDataFactory {
 | `@WebMvcTest` | Test MVC controllers with mocked services |
 | `@WebFluxTest` | Test reactive controllers |
 | `@DataJpaTest` | Test JPA repositories with in-memory database |
-| `@MockBean` | Add mock bean to Spring context |
+| `@MockitoBean` | Add mock bean to Spring context (replaces `@MockBean`, removed in Boot 4; `org.springframework.test.context.bean.override.mockito.MockitoBean`) |
 | `@WithMockUser` | Mock authenticated user for security tests |
 | `@Testcontainers` | Enable Testcontainers support |
 | `@ActiveProfiles` | Activate specific Spring profiles for test |

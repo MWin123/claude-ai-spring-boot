@@ -207,9 +207,8 @@ spring:
 
 ```java
 @Service
+@Slf4j
 public class ExternalApiService {
-    private static final Logger log = LoggerFactory.getLogger(ExternalApiService.class);
-
     private final RestClient restClient;
 
     public ExternalApiService(RestClient.Builder builder) {
@@ -312,14 +311,10 @@ management:
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final ObservationRegistry observationRegistry;
     private final OrderRepository orderRepository;
-
-    public OrderService(ObservationRegistry observationRegistry, OrderRepository orderRepository) {
-        this.observationRegistry = observationRegistry;
-        this.orderRepository = orderRepository;
-    }
 
     public Order processOrder(OrderRequest request) {
         return Observation.createNotStarted("order.process", observationRegistry)

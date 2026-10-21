@@ -6,12 +6,9 @@
 @RestController
 @RequestMapping("/api/users")
 @Validated
+@RequiredArgsConstructor
 public class UserController {
     private final UserService userService;
-    
-    public UserController(UserService userService) {
-        this.userService = userService;
-    }
     
     @GetMapping
     public ResponseEntity<Page<UserResponse>> getUsers(
@@ -117,10 +114,8 @@ public record UserResponse(
 
 ```java
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(
             ResourceNotFoundException ex, WebRequest request) {
@@ -211,13 +206,10 @@ public @interface UniqueEmail {
 }
 
 @Component
+@RequiredArgsConstructor
 public class UniqueEmailValidator implements ConstraintValidator<UniqueEmail, String> {
     private final UserRepository userRepository;
 
-    public UniqueEmailValidator(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-    
     @Override
     public boolean isValid(String email, ConstraintValidatorContext context) {
         if (email == null) return true;
@@ -230,9 +222,8 @@ public class UniqueEmailValidator implements ConstraintValidator<UniqueEmail, St
 
 ```java
 @Configuration
+@Slf4j
 public class RestClientConfig {
-    private static final Logger log = LoggerFactory.getLogger(RestClientConfig.class);
-
     @Bean
     public RestClient restClient(RestClient.Builder builder) {
         return builder
@@ -247,12 +238,9 @@ public class RestClientConfig {
 }
 
 @Service
+@RequiredArgsConstructor
 public class ExternalApiService {
     private final RestClient restClient;
-
-    public ExternalApiService(RestClient restClient) {
-        this.restClient = restClient;
-    }
 
     public ExternalDataResponse fetchData(String id) {
         return restClient
