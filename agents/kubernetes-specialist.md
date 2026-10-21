@@ -1,6 +1,6 @@
 ---
 name: kubernetes-specialist
-description: "Use this agent when you need to design, deploy, configure, or troubleshoot Kubernetes clusters and workloads in production environments."
+description: "Use this agent to write or review Kubernetes manifests for a Spring Boot app: Deployment, probes, ConfigMap/Secret, Prometheus, HPA/PDB, NetworkPolicy, and Skaffold dev loop."
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 effort: medium
@@ -78,8 +78,6 @@ spec:
             memory: "1Gi"
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
 
 ---
 apiVersion: v1
@@ -151,42 +149,9 @@ management:
 
 This exposes `/actuator/prometheus` with all Micrometer metrics in Prometheus format.
 
-## Building Images with Paketo Buildpacks
+## Building Images
 
-Paketo Buildpacks are the recommended way to build OCI images for Spring Boot. No Dockerfile needed.
-
-```bash
-# Build image using Spring Boot Maven plugin (uses Paketo by default)
-./mvnw spring-boot:build-image \
-  -Dspring-boot.build-image.imageName=<registry>/<app-name>:<version>
-
-# Build native image with Paketo
-./mvnw -Pnative spring-boot:build-image \
-  -Dspring-boot.build-image.imageName=<registry>/<app-name>:<version>-native
-```
-
-```xml
-<!-- pom.xml - Paketo Buildpacks configuration -->
-<plugin>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-maven-plugin</artifactId>
-    <configuration>
-        <image>
-            <name>${project.artifactId}:${project.version}</name>
-            <env>
-                <BP_JVM_VERSION>21</BP_JVM_VERSION>
-                <BPE_JAVA_TOOL_OPTIONS>-XX:MaxRAMPercentage=75.0</BPE_JAVA_TOOL_OPTIONS>
-            </env>
-        </image>
-    </configuration>
-</plugin>
-```
-
-Advantages over Dockerfile:
-- Reproducible builds without maintaining a Dockerfile
-- Automatic security patching of base image layers
-- Optimized layer caching (dependencies, application, etc.)
-- Compliance with OCI image standards
+Build images with Paketo Buildpacks (`./mvnw spring-boot:build-image`); see `devops-engineer` for the configuration.
 
 ## Local Development with Skaffold
 
@@ -254,7 +219,7 @@ skaffold run -p production
 - `NetworkPolicy` to restrict pod-to-pod traffic
 
 ### Security
-- `runAsNonRoot: true`, `runAsUser: 1000`
+- `runAsNonRoot: true` (leave `runAsUser` unset; Paketo images already run as a non-root user)
 - Read-only root filesystem where possible
 - `drop: ["ALL"]` capabilities
 - Dedicated `ServiceAccount` with minimal RBAC permissions

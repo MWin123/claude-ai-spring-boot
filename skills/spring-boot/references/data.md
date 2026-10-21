@@ -340,7 +340,44 @@ public class UserQueryService {
 }
 ```
 
-## Database Migrations (Flyway)
+## Database Migrations
+
+Schema changes live in versioned migrations (use `spring-boot-starter-liquibase`; Flyway below if the project already uses it). Set `spring.jpa.hibernate.ddl-auto=validate` outside tests.
+
+### Liquibase
+
+```yaml
+# src/main/resources/db/changelog/db.changelog-master.yaml
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/001-create-users-table.yaml
+```
+
+```yaml
+# src/main/resources/db/changelog/changes/001-create-users-table.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-users-table
+      author: app
+      changes:
+        - createTable:
+            tableName: users
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: email, type: VARCHAR(100), constraints: { nullable: false, unique: true } }
+              - column: { name: username, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+              - column: { name: active, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - createIndex:
+            indexName: idx_users_active
+            tableName: users
+            columns:
+              - column: { name: active }
+```
+
+Never edit a changeSet after it ran (Liquibase checksums it); add a new one.
+
+### Flyway
 
 ```sql
 -- V1__create_users_table.sql

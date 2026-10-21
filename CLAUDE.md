@@ -14,3 +14,4 @@
 
 ## Subagents
 - Anything that runs tests goes to `tests`. Relay its summary, never raw output.
+- Review a single commit or file with `quick-reviewer`.

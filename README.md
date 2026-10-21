@@ -30,11 +30,13 @@ Specialized agents that Claude Code can invoke for specific tasks:
 | Agent | Purpose |
 |-------|---------|
 | `spring-boot-engineer` | Build Spring Boot 4.x apps with layered architecture |
-| `code-reviewer` | Review code for correctness, security, Spring Boot conventions |
+| `code-reviewer` | Thorough review of a finished feature: correctness, security, performance, design (use sparingly) |
+| `quick-reviewer` | Fast review of a single commit or file: mechanical checks only |
 | `kubernetes-specialist` | K8s deployments, probes, ConfigMap/Secret, Prometheus, Skaffold |
-| `devops-engineer` | CI/CD pipelines, Paketo Buildpacks, Skaffold |
-| `docker-expert` | Multi-stage Dockerfiles, Paketo Buildpacks, image optimization |
+| `devops-engineer` | Paketo Buildpacks, multi-stage Dockerfiles, Docker Compose, Skaffold, existing CI/CD pipelines |
 | `security-engineer` | Spring Security, OWASP, input validation, SSL Bundles |
+| `boot-migration` | Upgrade existing Spring Boot 2.x/3.x projects to 4.x in verified steps |
+| `db-migration` | Liquibase (default) or Flyway schema migrations, kept consistent with JPA entities |
 | `tests` | Runs the test suite, returns only failing tests (max 20 lines) |
 
 ### Skills (`skills/`)
@@ -51,6 +53,7 @@ Reusable knowledge that Claude loads contextually:
 | `java-modern` | Java 21+ features: records, Lombok rules, sealed classes, pattern matching, virtual threads |
 | `jpa-patterns` | JPA/Hibernate pitfalls (N+1, lazy loading), Hibernate 7, optimistic locking |
 | `logging-patterns` | Structured JSON logging, SLF4J, MDC, AI-friendly formats |
+| `review-checklist` | What to flag in a Spring Boot review; shared by `code-reviewer` and `quick-reviewer` |
 
 ### Key Conventions
 
@@ -104,10 +107,12 @@ You can also invoke skills and agents directly:
 ```
 .
 ├── agents/
+│   ├── boot-migration.md
 │   ├── code-reviewer.md
+│   ├── db-migration.md
 │   ├── devops-engineer.md
-│   ├── docker-expert.md
 │   ├── kubernetes-specialist.md
+│   ├── quick-reviewer.md
 │   ├── security-engineer.md
 │   ├── spring-boot-engineer.md
 │   └── tests.md
@@ -118,6 +123,7 @@ You can also invoke skills and agents directly:
 │   ├── java-modern/SKILL.md
 │   ├── jpa-patterns/SKILL.md
 │   ├── logging-patterns/SKILL.md
+│   ├── review-checklist/SKILL.md
 │   ├── spring-boot/
 │   │   ├── SKILL.md
 │   │   └── references/
