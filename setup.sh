@@ -3,14 +3,14 @@
 # Usage: ./setup.sh [project-dir]   (defaults to the current directory)
 set -euo pipefail
 
-SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 TARGET_DIR="${1:-.}"
 
 if [[ ! -d "$TARGET_DIR" ]]; then
   echo "Project directory not found: $TARGET_DIR" >&2
   exit 1
 fi
-TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
+TARGET_DIR="$(cd "$TARGET_DIR" && pwd -P)"
 
 if [[ "$TARGET_DIR" == "$SOURCE_DIR" ]]; then
   echo "Target is this repository itself; pass your project directory." >&2

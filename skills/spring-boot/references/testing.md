@@ -479,12 +479,11 @@ class UserReactiveControllerTest {
 ```java
 // application-test.yml
 spring:
-  datasource:
-    url: jdbc:h2:mem:testdb
-    driver-class-name: org.h2.Driver
+  # No datasource here: the Testcontainers @ServiceConnection container supplies it.
+  # Migrations build the schema; validate fails if they drift from the entities (never create-drop, never H2).
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
@@ -555,7 +554,7 @@ public class TestDataFactory {
 | `@AutoConfigureRestTestClient` | Auto-configure `RestTestClient` for integration tests |
 | `@WebMvcTest` | Test MVC controllers with mocked services |
 | `@WebFluxTest` | Test reactive controllers |
-| `@DataJpaTest` | Test JPA repositories with in-memory database |
+| `@DataJpaTest` | Test JPA repositories against the Testcontainers database (`@AutoConfigureTestDatabase(replace = NONE)`) |
 | `@MockitoBean` | Add mock bean to Spring context (replaces `@MockBean`, removed in Boot 4; `org.springframework.test.context.bean.override.mockito.MockitoBean`) |
 | `@WithMockUser` | Mock authenticated user for security tests |
 | `@Testcontainers` | Enable Testcontainers support |

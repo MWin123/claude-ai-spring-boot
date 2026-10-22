@@ -1,6 +1,6 @@
 ---
 name: helm-specialist
-description: "Use this agent to create, extend or review a Helm chart for a Spring Boot app: templates, values, probes, ConfigMap/Secret, Ingress, HPA/PDB, chart tests, linting and install/upgrade commands. For plain manifests or Skaffold, use kubernetes-specialist."
+description: "Use this agent to create, extend or review a Helm chart for a Spring Boot app: templates, values, probes, ConfigMap/Secret, Ingress, HPA/PDB, chart tests, linting and install/upgrade commands. For plain manifests use kubernetes-specialist."
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 effort: medium
@@ -86,7 +86,7 @@ config:
 # Name of a Secret that already exists in the namespace (created outside the chart)
 existingSecret: ""
 
-javaToolOptions: "-XX:MaxRAMPercentage=75.0"   # ignored on buildpack images (their memory calculator sets -Xmx); set "" to omit
+javaToolOptions: ""   # omitted when empty; buildpack images size the heap themselves (their memory calculator sets -Xmx), so only set e.g. "-XX:MaxRAMPercentage=75.0" for Dockerfile images
 
 resources:
   requests:

@@ -508,8 +508,6 @@ spec:
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"
-        - name: JAVA_TOOL_OPTIONS
-          value: "-XX:MaxRAMPercentage=75.0"
         livenessProbe:
           httpGet:
             path: /actuator/health/liveness
@@ -792,7 +790,6 @@ Paketo Buildpacks build OCI images without a Dockerfile. Integrated into Spring 
             <name>${project.artifactId}:${project.version}</name>
             <env>
                 <BP_JVM_VERSION>21</BP_JVM_VERSION>
-                <BPE_JAVA_TOOL_OPTIONS>-XX:MaxRAMPercentage=75.0</BPE_JAVA_TOOL_OPTIONS>
             </env>
         </image>
     </configuration>

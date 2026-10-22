@@ -1,6 +1,6 @@
 ---
 name: kubernetes-specialist
-description: "Use this agent to write or review Kubernetes manifests for a Spring Boot app: Deployment, probes, ConfigMap/Secret, Prometheus, HPA/PDB, NetworkPolicy, and Skaffold dev loop."
+description: "Use this agent to write or review Kubernetes manifests for a Spring Boot app: Deployment, probes, ConfigMap/Secret, Prometheus, HPA/PDB, NetworkPolicy, and a Skaffold for local development."
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 effort: medium
@@ -43,8 +43,6 @@ spec:
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"
-        - name: JAVA_TOOL_OPTIONS
-          value: "-XX:MaxRAMPercentage=75.0"
         livenessProbe:
           httpGet:
             path: /actuator/health/liveness
@@ -76,6 +74,17 @@ spec:
             cpu: "250m"
           limits:
             memory: "1Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -224,7 +233,6 @@ skaffold run -p production
 ### Security
 - `runAsNonRoot: true` (leave `runAsUser` unset; Paketo images and the `devops-engineer` Dockerfile run as a numeric non-root UID. An image with a non-numeric `USER` fails with `CreateContainerConfigError`: fix the image, or set `runAsUser`)
 - Set `fsGroup` when the pod mounts volumes the app must write to
-- Read-only root filesystem where possible
-- `drop: ["ALL"]` capabilities
+- Container `securityContext` with `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true` and `drop: ["ALL"]` (all required by the "restricted" Pod Security level, except the read-only root); mount an `emptyDir` on `/tmp` for the JVM and Tomcat
 - Dedicated `ServiceAccount` with minimal RBAC permissions
 - Use `External Secrets Operator` or `Sealed Secrets` for secret management in Git

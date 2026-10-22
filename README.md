@@ -32,9 +32,9 @@ Specialized agents that Claude Code can invoke for specific tasks:
 | `spring-boot-engineer` | Build Spring Boot 4.x apps with layered architecture |
 | `code-reviewer` | Thorough review of a finished feature: correctness, security, performance, design (use sparingly) |
 | `quick-reviewer` | Fast review of a single commit or file: mechanical checks only |
-| `kubernetes-specialist` | K8s deployments, probes, ConfigMap/Secret, Prometheus, Skaffold |
+| `kubernetes-specialist` | K8s deployments, probes, ConfigMap/Secret, Prometheus, Skaffold for local development |
 | `helm-specialist` | Helm charts for Spring Boot: Deployment or StatefulSet, templates, values, probes, Ingress, HPA/PDB, `helm test`, lint/verify |
-| `devops-engineer` | Paketo Buildpacks, multi-stage Dockerfiles, Docker Compose, Skaffold, existing CI/CD pipelines |
+| `devops-engineer` | Paketo Buildpacks, multi-stage Dockerfiles, Docker Compose, existing CI/CD pipelines |
 | `security-engineer` | Spring Security, OWASP, input validation, SSL Bundles |
 | `boot-migration` | Upgrade existing Spring Boot 2.x/3.x projects to 4.x in verified steps |
 | `db-migration` | Liquibase (default) or Flyway schema migrations, kept consistent with JPA entities |

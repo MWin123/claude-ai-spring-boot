@@ -282,6 +282,7 @@ public class AuthenticationController {
 @RequiredArgsConstructor
 public class AuthenticationService {
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -296,9 +297,10 @@ public class AuthenticationService {
             .password(passwordEncoder.encode(request.password()))
             .username(request.username())
             .build();
-        Role userRole = new Role();
-        userRole.setName("USER");
-        user.setRoles(Set.of(userRole));
+        // Load the persisted role: a new Role() would be transient and fail at flush
+        Role userRole = roleRepository.findByName("USER")
+            .orElseThrow(() -> new IllegalStateException("Role USER is not seeded"));
+        user.getRoles().add(userRole);
 
         user = userRepository.save(user);
 
