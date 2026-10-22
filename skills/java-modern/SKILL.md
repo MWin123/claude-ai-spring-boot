@@ -116,7 +116,7 @@ public class Product {
     // equals/hashCode written by hand, based on the identifier; use getters and
     // Hibernate.getClass() so lazy proxies compare equal to the loaded entity
     @Override public boolean equals(Object o) {
-        return o instanceof Product p && getId() != null && getId().equals(p.getId());
+        return this == o || o instanceof Product p && getId() != null && getId().equals(p.getId());
     }
     @Override public int hashCode() { return Hibernate.getClass(this).hashCode(); }
 }

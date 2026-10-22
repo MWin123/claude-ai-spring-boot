@@ -352,6 +352,8 @@ Schema changes live in versioned migrations (use `spring-boot-starter-liquibase`
 databaseChangeLog:
   - include:
       file: db/changelog/changes/001-create-users-table.yaml
+  - include:
+      file: db/changelog/changes/002-create-addresses-and-roles.yaml
 ```
 
 ```yaml
@@ -377,6 +379,39 @@ databaseChangeLog:
             tableName: users
             columns:
               - column: { name: active }
+```
+
+```yaml
+# src/main/resources/db/changelog/changes/002-create-addresses-and-roles.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-addresses-and-roles
+      author: app
+      changes:
+        - createTable:
+            tableName: addresses
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: user_id, type: BIGINT, constraints: { nullable: false, foreignKeyName: fk_addresses_user, references: users(id), deleteCascade: true } }
+              - column: { name: street, type: VARCHAR(200), constraints: { nullable: false } }
+              - column: { name: city, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: country, type: VARCHAR(2), constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+        - createIndex:
+            indexName: idx_addresses_user_id
+            tableName: addresses
+            columns:
+              - column: { name: user_id }
+        - createTable:
+            tableName: roles
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: name, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+        - createTable:
+            tableName: user_roles
+            columns:
+              - column: { name: user_id, type: BIGINT, constraints: { nullable: false, primaryKey: true, foreignKeyName: fk_user_roles_user, references: users(id), deleteCascade: true } }
+              - column: { name: role_id, type: BIGINT, constraints: { nullable: false, primaryKey: true, foreignKeyName: fk_user_roles_role, references: roles(id) } }
 ```
 
 Never edit a changeSet after it ran (Liquibase checksums it); add a new one.
@@ -411,6 +446,18 @@ CREATE TABLE addresses (
 );
 
 CREATE INDEX idx_addresses_user_id ON addresses(user_id);
+
+-- V3__create_roles_tables.sql
+CREATE TABLE roles (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE user_roles (
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id BIGINT NOT NULL REFERENCES roles(id),
+    PRIMARY KEY (user_id, role_id)
+);
 ```
 
 ## Quick Reference

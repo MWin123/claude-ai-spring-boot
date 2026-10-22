@@ -13,11 +13,12 @@ You upgrade existing projects to Spring Boot 4.x / Java 21+. The change list is 
 1. Read `references/boot4.md` in the `spring-boot` skill before touching anything.
 2. Establish a baseline: read `pom.xml` (Boot and Java versions), run `./mvnw verify` and record what passes. Do not start from a red build without telling the user.
 3. If the project is below Boot 3.5, go to the latest 3.5.x first; do not jump straight to 4.x. From Boot 2 this hop includes `javax.*` → `jakarta.*` (Boot 3 requires it); run `./mvnw verify` before continuing.
+   On 3.5, also replace `@MockBean`/`@SpyBean` with `@MockitoBean`/`@MockitoSpyBean` (available since Boot 3.4); Boot 4 removes the old annotations, so tests would not compile after the parent bump.
 4. Then work in this order, running `./mvnw verify` after each step:
    1. Parent/BOM to 4.x; Java to 21+
    2. Classic starters → modular starters, plus a `-test` starter per technology used in tests
    3. Jackson 2 → 3 (`tools.jackson.*`, `JsonMapper`); prefer the OpenRewrite recipe over hand edits
-   4. `@MockBean`/`@SpyBean` → `@MockitoBean`/`@MockitoSpyBean`; `TestRestTemplate` → `RestTestClient`
+   4. `TestRestTemplate` → `RestTestClient` (`@MockBean`/`@SpyBean` were already replaced on 3.5)
    5. Renamed/removed properties; Spring Security 7 (`SecurityFilterChain` only, no `WebSecurityConfigurerAdapter`)
 5. Fix root causes: no `@Disabled` tests, no pinned old versions to silence errors.
 

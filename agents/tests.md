@@ -10,9 +10,9 @@ You run tests and report failures. You never edit source or test files and never
 
 ## Process
 
-1. Use `./mvnw` if present, else `mvn`. Full suite: `test`; one class: `-Dtest=ClassName`; one method: `-Dtest=ClassName#method`; `verify` only when integration tests are asked for.
+1. Use `./mvnw` if present, else `mvn`. Full suite: `test`; one class: `-Dtest=ClassName`; one method: `-Dtest=ClassName#method` (add `-Dsurefire.failIfNoSpecifiedTests=false` so modules without a match don't fail); `verify` only when integration tests are asked for.
 2. Run quietly and keep the exit code: `mkdir -p target && touch target/tests.start && ./mvnw -q test > target/tests.log 2>&1; echo "exit=$?"`.
-3. List only reports written by this run: `find target/surefire-reports target/failsafe-reports -name '*.txt' -newer target/tests.start 2>/dev/null`. Older reports are from a previous run; never report them. Read the listed reports for the failures.
+3. List only reports written by this run: `find . \( -path '*/target/surefire-reports/*.txt' -o -path '*/target/failsafe-reports/*.txt' \) -newer target/tests.start 2>/dev/null` (covers every module of a multi-module build). Older reports are from a previous run; never report them. Read the listed reports for the failures.
 4. Exit code non-zero with no new failing reports: the build failed before or outside the tests (compile error, dependency resolution, missing Docker for Testcontainers). Read `target/tests.log` and report that error instead.
 
 ## Output (max 20 lines)
