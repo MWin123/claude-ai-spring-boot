@@ -207,9 +207,8 @@ spring:
 
 ```java
 @Service
+@Slf4j
 public class ExternalApiService {
-    private static final Logger log = LoggerFactory.getLogger(ExternalApiService.class);
-
     private final RestClient restClient;
 
     public ExternalApiService(RestClient.Builder builder) {
@@ -312,14 +311,10 @@ management:
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final ObservationRegistry observationRegistry;
     private final OrderRepository orderRepository;
-
-    public OrderService(ObservationRegistry observationRegistry, OrderRepository orderRepository) {
-        this.observationRegistry = observationRegistry;
-        this.orderRepository = orderRepository;
-    }
 
     public Order processOrder(OrderRequest request) {
         return Observation.createNotStarted("order.process", observationRegistry)
@@ -764,10 +759,11 @@ COPY src src
 RUN ./mvnw package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S app -G app && apk add --no-cache curl
+RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app && apk add --no-cache curl
 WORKDIR /app
 COPY --from=build /workspace/app/target/*.jar app.jar
-USER app
+# Numeric UID, so Kubernetes runAsNonRoot can verify it
+USER 1000
 HEALTHCHECK --interval=30s --timeout=3s CMD curl -sf http://localhost:8080/actuator/health || exit 1
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
