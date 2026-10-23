@@ -127,6 +127,19 @@ public ResponseEntity<Void> activate(@PathVariable Long id) { }
 @RequestMapping("/api/v1/users")
 public class UserControllerV1 { }
 
+// ✅ Native API versioning (Spring Framework 7 / Boot 4)
+// application.properties: spring.mvc.apiversion.use.header=API-Version
+//                         spring.mvc.apiversion.default=1.0  (else requests without the header get 400)
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+    @GetMapping(path = "/{id}", version = "1.0")
+    public UserV1 getV1(@PathVariable Long id) { ... }
+
+    @GetMapping(path = "/{id}", version = "2.0")
+    public UserV2 getV2(@PathVariable Long id) { ... }
+}
+
 // ❌ No versioning
 @RequestMapping("/users")  // Breaking changes affect all clients
 ```
@@ -184,7 +197,7 @@ return user.getName().toUpperCase();
 - Chained calls without null checks
 - `Optional.get()` without `isPresent()`
 - Returning `null` instead of `Optional` or empty collection
-- Missing `@Nullable`/`@NonNull` on public APIs
+- Missing JSpecify nullability on public APIs: `@NullMarked` on packages, `org.jspecify.annotations.Nullable` where null is allowed
 
 ### Exception Handling
 
@@ -328,7 +341,8 @@ Page<User> users = userRepository.findAll(PageRequest.of(0, 20));
 | **Transactions** | Multi-step writes without @Transactional |
 | **Performance** | N+1 queries, loading all data, missing indexes |
 | **Clean Code** | Code duplication, magic numbers, unclear names |
-| **No Lombok** | Any `@Data`, `@Getter`, `@Setter`, `@Builder`, `@Slf4j`, `@RequiredArgsConstructor` — use explicit code |
+| **Boot 3 leftovers** | `@MockBean`, `@SpyBean`, `com.fasterxml.jackson.databind`, `spring-boot-starter-web`, Hibernate 6-only APIs |
+| **Lombok** | Any violation of the Lombok rules in the `java-modern` skill |
 
 ---
 
