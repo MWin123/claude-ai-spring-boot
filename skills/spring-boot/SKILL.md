@@ -2,7 +2,7 @@
 name: spring-boot
 description: Spring Boot 4.x development - REST APIs, JPA, Security, Testing, and Cloud-native patterns. Use for building enterprise Java applications with Spring Boot.
 metadata:
-  version: "2.0.0"
+  version: "1.0.0"
   domain: backend
   triggers: Spring Boot, Spring Framework, Spring Security, Spring Data JPA, Spring WebFlux, Java REST API, Microservices Java
   role: specialist
@@ -20,18 +20,24 @@ Enterprise Spring Boot 4.x development with focus on clean architecture and prod
 2. **Design** - Plan architecture, confirm design before coding
 3. **Implement** - Build with constructor injection and layered architecture
 4. **Secure** - Add Spring Security, OAuth2, method security; verify tests pass
-5. **Test** - Write unit, integration tests; run `./mvnw test` and confirm all pass
+5. **Test** - Write unit, integration tests; run `./mvnw test` (Gradle: `./gradlew test`) and confirm all pass
 6. **Deploy** - Configure health checks via Actuator; validate `/actuator/health` returns UP
 
 ## Quick Start Templates
+
+Modern Java first: DTOs are records; Lombok rules (including the safe subset for entities) are in the `java-modern` skill.
 
 ### Entity
 ```java
 @Entity
 @Table(name = "products")
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     @NotBlank
@@ -40,7 +46,13 @@ public class Product {
     @DecimalMin("0.0")
     private BigDecimal price;
 
-    // Getters/Setters (no Lombok)
+    @Builder                                    // business fields only: no id
+    public Product(String name, BigDecimal price) {
+        this.name = name;
+        this.price = price;
+    }
+
+    // equals/hashCode: write by hand, id-based (never @Data/@EqualsAndHashCode)
 }
 ```
 
@@ -54,13 +66,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 ### Service
 ```java
 @Service
+@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ProductService {
     private final ProductRepository repo;
-
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
-    }
 
     public List<ProductResponse> search(String name) {
         return repo.findByNameContainingIgnoreCase(name).stream()
@@ -70,9 +79,7 @@ public class ProductService {
 
     @Transactional
     public ProductResponse create(ProductRequest request) {
-        var product = new Product();
-        product.setName(request.name());
-        product.setPrice(request.price());
+        var product = Product.builder().name(request.name()).price(request.price()).build();
         return ProductResponse.from(repo.save(product));
     }
 }
@@ -83,12 +90,9 @@ public class ProductService {
 @RestController
 @RequestMapping("/api/v1/products")
 @Validated
+@RequiredArgsConstructor
 public class ProductController {
     private final ProductService service;
-
-    public ProductController(ProductService service) {
-        this.service = service;
-    }
 
     @GetMapping
     public List<ProductResponse> search(@RequestParam(defaultValue = "") String name) {
@@ -142,7 +146,7 @@ public class GlobalExceptionHandler {
 @WebMvcTest(ProductController.class)
 class ProductControllerTest {
     @Autowired MockMvc mockMvc;
-    @MockBean ProductService service;
+    @MockitoBean ProductService service;
 
     @Test
     void createProduct_validRequest_returns201() throws Exception {
@@ -166,16 +170,18 @@ Load detailed patterns based on context:
 
 | Topic | Reference | When to Load |
 |-------|-----------|-------------|
-| Web/REST | `references/web.md` | Controllers, validation, exception handling, Problem Details (RFC 7807) |
+| Web/REST | `references/web.md` | Controllers, validation, exception handling, Problem Details (RFC 7807), OpenAPI spec (springdoc) |
 | Data Access | `references/data.md` | JPA, repositories, transactions, queries |
-| Security | `references/security.md` | Spring Security 6, OAuth2, JWT, auth |
+| Security | `references/security.md` | Spring Security 7, OAuth2, JWT, auth |
 | Cloud/Config | `references/cloud.md` | Config server, discovery, resilience, virtual threads, HTTP interfaces, GraalVM native, OTLP tracing |
-| Testing | `references/testing.md` | Unit, integration, slice tests, Testcontainers @ServiceConnection |
+| Boot 4 | `references/boot4.md` | Modular starters, Jackson 3, @MockitoBean, @ImportHttpServices, API versioning, JSpecify |
+| Testing | `testing-patterns` skill | Unit, slice and integration tests, H2 and Testcontainers profiles |
 
 ## Constraints
 
 ### MUST DO
-- Constructor injection (no field injection)
+- Constructor injection (no field injection), generated with Lombok `@RequiredArgsConstructor`
+- Records for DTOs, Lombok only for boilerplate a record cannot replace, only the safe Lombok subset on `@Entity` classes
 - `@Valid` on all request bodies
 - `@Transactional` for multi-step writes
 - `@Transactional(readOnly = true)` for reads
@@ -189,13 +195,16 @@ Load detailed patterns based on context:
 - Mix blocking and reactive code
 - Store secrets in application.properties
 - Use deprecated Spring Boot 2.x/3.x patterns
+- Use `@MockBean`/`@SpyBean` (use `@MockitoBean`/`@MockitoSpyBean`)
+- Use `com.fasterxml.jackson.databind` (Jackson 3: `tools.jackson.databind`)
+- Use classic starters such as `spring-boot-starter-web` (use `spring-boot-starter-webmvc` plus matching `-test` starters)
 - Hardcode URLs, credentials, environment values
 
 ## Architecture Patterns
 
 **Project Structure:**
 ```
-src/main/java/pl/piomin/services/
+src/main/java/com/example/
 ├── controller/     # REST endpoints
 ├── service/        # Business logic
 ├── repository/     # Data access
@@ -234,12 +243,9 @@ src/main/java/pl/piomin/services/
 ```java
 @RestController
 @RequestMapping("/api/v1/orders")
+@RequiredArgsConstructor
 public class OrderController {
     private final OrderService orderService;
-
-    public OrderController(OrderService orderService) {
-        this.orderService = orderService;
-    }
 
     @GetMapping("/{id}")
     public Mono<ResponseEntity<OrderDto>> getOrder(@PathVariable UUID id) {
@@ -269,6 +275,8 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
+                        // springdoc OpenAPI spec and Swagger UI (references/web.md)
+                        .requestMatchers("/v3/api-docs/**", "/v3/api-docs.yaml", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                 .build();
@@ -278,4 +286,4 @@ public class SecurityConfig {
 
 ## Knowledge Base
 
-Spring Boot 4.x, Java 21+, Spring WebFlux, Project Reactor, Spring Data JPA, Spring Security, OAuth2/JWT, Hibernate, R2DBC, Spring Cloud, Resilience4j, Micrometer, JUnit 5, Testcontainers, Mockito, Maven, Paketo Buildpacks, Skaffold
+Spring Boot 4.x, Java 21+, Spring WebFlux, Project Reactor, Spring Data JPA, Spring Security, OAuth2/JWT, Hibernate, R2DBC, Spring Cloud, Resilience4j, Micrometer, JUnit 5, Testcontainers, Mockito, Maven, Gradle, Paketo Buildpacks, Skaffold
