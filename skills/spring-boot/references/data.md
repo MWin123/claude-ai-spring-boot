@@ -9,10 +9,14 @@
     @Index(name = "idx_username", columnList = "username")
 })
 @EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     @Column(nullable = false, unique = true, length = 100)
@@ -47,56 +51,15 @@ public class User {
     private LocalDateTime updatedAt;
 
     @Version
+    @Setter(AccessLevel.NONE)                   // managed by Hibernate
     private Long version;
 
-    // Constructors
-    public User() {}
-
-    public User(Long id, String email, String password, String username, Boolean active,
-                List<Address> addresses, Set<Role> roles, LocalDateTime createdAt,
-                LocalDateTime updatedAt, Long version) {
-        this.id = id;
+    @Builder                                    // business fields only: no id/version
+    public User(String email, String password, String username) {
         this.email = email;
         this.password = password;
         this.username = username;
-        this.active = active != null ? active : true;
-        this.addresses = addresses != null ? addresses : new ArrayList<>();
-        this.roles = roles != null ? roles : new HashSet<>();
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.version = version;
     }
-
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-
-    public String getPassword() { return password; }
-    public void setPassword(String password) { this.password = password; }
-
-    public String getUsername() { return username; }
-    public void setUsername(String username) { this.username = username; }
-
-    public Boolean getActive() { return active; }
-    public void setActive(Boolean active) { this.active = active; }
-
-    public List<Address> getAddresses() { return addresses; }
-    public void setAddresses(List<Address> addresses) { this.addresses = addresses; }
-
-    public Set<Role> getRoles() { return roles; }
-    public void setRoles(Set<Role> roles) { this.roles = roles; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-
-    public Long getVersion() { return version; }
-    public void setVersion(Long version) { this.version = version; }
 
     // Helper methods for bidirectional relationships
     public void addAddress(Address address) {
@@ -137,7 +100,7 @@ public interface UserRepository extends JpaRepository<User, Long>,
     int deactivateInactiveUsers(@Param("threshold") LocalDateTime threshold);
 
     // Projection for read-only DTOs
-    @Query("SELECT new pl.piomin.services.dto.UserSummary(u.id, u.username, u.email) " +
+    @Query("SELECT new com.example.dto.UserSummary(u.id, u.username, u.email) " +
            "FROM User u WHERE u.active = true")
     List<UserSummary> findAllActiveSummaries();
 }
@@ -172,13 +135,10 @@ public class UserSpecifications {
 
 // Usage in service
 @Service
+@RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
 
-    public UserService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-    
     public Page<User> searchUsers(UserSearchCriteria criteria, Pageable pageable) {
         Specification<User> spec = Specification
             .where(UserSpecifications.hasEmail(criteria.email()))
@@ -195,25 +155,15 @@ public class UserService {
 ```java
 @Service
 @Transactional(readOnly = true)
+@Slf4j
+@RequiredArgsConstructor
 public class OrderService {
-    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
-
     private final OrderRepository orderRepository;
     private final OrderEventRepository orderEventRepository;
     private final PaymentService paymentService;
     private final InventoryService inventoryService;
     private final NotificationService notificationService;
 
-    public OrderService(OrderRepository orderRepository, OrderEventRepository orderEventRepository,
-                        PaymentService paymentService, InventoryService inventoryService,
-                        NotificationService notificationService) {
-        this.orderRepository = orderRepository;
-        this.orderEventRepository = orderEventRepository;
-        this.paymentService = paymentService;
-        this.inventoryService = inventoryService;
-        this.notificationService = notificationService;
-    }
-    
     @Transactional
     public Order createOrder(OrderCreateRequest request) {
         // All operations in single transaction
@@ -289,6 +239,8 @@ public class JpaAuditingConfig {
 
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
 public abstract class AuditableEntity {
 
     @CreatedDate
@@ -306,18 +258,6 @@ public abstract class AuditableEntity {
     @LastModifiedBy
     @Column(nullable = false, length = 100)
     private String updatedBy;
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public String getCreatedBy() { return createdBy; }
-    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
-
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-
-    public String getUpdatedBy() { return updatedBy; }
-    public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
 }
 ```
 
@@ -391,12 +331,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 // Service-level: use repository with pagination
 @Service
 @Transactional(readOnly = true)
+@RequiredArgsConstructor
 public class UserQueryService {
     private final UserRepository userRepository;
-
-    public UserQueryService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
 
     public Page<User> findAllUsers(Pageable pageable) {
         return userRepository.findAll(pageable);
@@ -404,7 +341,86 @@ public class UserQueryService {
 }
 ```
 
-## Database Migrations (Flyway)
+## Database Migrations
+
+Schema changes live in versioned migrations (use `spring-boot-starter-liquibase`; Flyway below if the project already uses it). Set `spring.jpa.hibernate.ddl-auto=validate` outside tests.
+
+### Liquibase
+
+```yaml
+# src/main/resources/db/changelog/db.changelog-master.yaml
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/001-create-users-table.yaml
+  - include:
+      file: db/changelog/changes/002-create-addresses-and-roles.yaml
+```
+
+```yaml
+# src/main/resources/db/changelog/changes/001-create-users-table.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-users-table
+      author: app
+      changes:
+        - createTable:
+            tableName: users
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: email, type: VARCHAR(100), constraints: { nullable: false, unique: true } }
+              - column: { name: password, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: username, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+              - column: { name: active, type: BOOLEAN, defaultValueBoolean: true, constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+              - column: { name: version, type: BIGINT, defaultValueNumeric: 0, constraints: { nullable: false } }
+        - createIndex:
+            indexName: idx_users_active
+            tableName: users
+            columns:
+              - column: { name: active }
+```
+
+```yaml
+# src/main/resources/db/changelog/changes/002-create-addresses-and-roles.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-addresses-and-roles
+      author: app
+      changes:
+        - createTable:
+            tableName: addresses
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: user_id, type: BIGINT, constraints: { nullable: false, foreignKeyName: fk_addresses_user, references: users(id), deleteCascade: true } }
+              - column: { name: street, type: VARCHAR(200), constraints: { nullable: false } }
+              - column: { name: city, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: country, type: VARCHAR(2), constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMP, defaultValueComputed: CURRENT_TIMESTAMP, constraints: { nullable: false } }
+        - createIndex:
+            indexName: idx_addresses_user_id
+            tableName: addresses
+            columns:
+              - column: { name: user_id }
+        - createTable:
+            tableName: roles
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: name, type: VARCHAR(50), constraints: { nullable: false, unique: true } }
+        - createTable:
+            tableName: user_roles
+            columns:
+              - column: { name: user_id, type: BIGINT, constraints: { nullable: false, primaryKey: true, foreignKeyName: fk_user_roles_user, references: users(id), deleteCascade: true } }
+              - column: { name: role_id, type: BIGINT, constraints: { nullable: false, primaryKey: true, foreignKeyName: fk_user_roles_role, references: roles(id) } }
+        - insert:
+            tableName: roles
+            columns:
+              - column: { name: name, value: USER }
+```
+
+Never edit a changeSet after it ran (Liquibase checksums it); add a new one.
+
+### Flyway
 
 ```sql
 -- V1__create_users_table.sql
@@ -419,8 +435,6 @@ CREATE TABLE users (
     version BIGINT NOT NULL DEFAULT 0
 );
 
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_active ON users(active);
 
 -- V2__create_addresses_table.sql
@@ -434,6 +448,20 @@ CREATE TABLE addresses (
 );
 
 CREATE INDEX idx_addresses_user_id ON addresses(user_id);
+
+-- V3__create_roles_tables.sql
+CREATE TABLE roles (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE user_roles (
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id BIGINT NOT NULL REFERENCES roles(id),
+    PRIMARY KEY (user_id, role_id)
+);
+
+INSERT INTO roles (name) VALUES ('USER');
 ```
 
 ## Quick Reference
