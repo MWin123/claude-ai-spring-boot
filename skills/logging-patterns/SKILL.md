@@ -60,7 +60,7 @@ logging:
 {
   "timestamp": "2026-01-29T10:15:30.123Z",
   "level": "INFO",
-  "logger": "pl.piomin.services.OrderService",
+  "logger": "com.example.OrderService",
   "message": "Order created",
   "requestId": "req-abc123",
   "traceId": "trace-xyz",
@@ -140,7 +140,7 @@ logging:
 
 Output:
 ```json
-{"@timestamp":"2026-01-29T10:15:30.123Z","level":"INFO","logger_name":"pl.piomin.services.OrderService","message":"Order created","traceId":"abc123def456","spanId":"789xyz","service.name":"order-service"}
+{"@timestamp":"2026-01-29T10:15:30.123Z","level":"INFO","logger_name":"com.example.OrderService","message":"Order created","traceId":"abc123def456","spanId":"789xyz","service.name":"order-service"}
 ```
 
 The `traceId` field in JSON logs is the same trace ID visible in Jaeger, Tempo, or any OTel-compatible backend — enabling direct log-to-trace correlation.
@@ -180,7 +180,8 @@ logging:
 ./mvnw spring-boot:run
 
 # Human-readable when needed
-./mvnw spring-boot:run -Dspring.profiles.active=human-logs
+./mvnw spring-boot:run -Dspring-boot.run.profiles=human-logs
+./gradlew bootRun --args='--spring.profiles.active=human-logs'   # Gradle
 ```
 
 ---
@@ -255,15 +256,17 @@ log.info("Order created",
 ### Logger Declaration
 
 ```java
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 @Service
+@Slf4j
 public class OrderService {
-    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
-
     // use `log` directly for logging
 }
+```
+
+Without Lombok:
+
+```java
+private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 ```
 
 ### Parameterized Logging
@@ -345,8 +348,8 @@ public class MdcFilter implements Filter {
 
 ```java
 @Service
+@Slf4j
 public class OrderService {
-    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     public Order createOrder(OrderRequest request) {
         MDC.put("userId", request.userId());
@@ -393,7 +396,7 @@ public class AsyncConfig {
 
 | Pattern | Use |
 |---------|-----|
-| `LoggerFactory.getLogger(MyClass.class)` | Declare logger (no `@Slf4j`) |
+| `@Slf4j` | Declare logger (always, when the class can use Lombok); `LoggerFactory.getLogger(MyClass.class)` otherwise |
 | `log.info("msg {}", var)` | Parameterized logging |
 | `log.error("msg {}", var, exception)` | Log with stack trace |
 | `MDC.put("key", "value")` | Add context to all logs in thread |

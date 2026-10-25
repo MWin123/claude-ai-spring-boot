@@ -207,9 +207,8 @@ spring:
 
 ```java
 @Service
+@Slf4j
 public class ExternalApiService {
-    private static final Logger log = LoggerFactory.getLogger(ExternalApiService.class);
-
     private final RestClient restClient;
 
     public ExternalApiService(RestClient.Builder builder) {
@@ -312,14 +311,10 @@ management:
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final ObservationRegistry observationRegistry;
     private final OrderRepository orderRepository;
-
-    public OrderService(ObservationRegistry observationRegistry, OrderRepository orderRepository) {
-        this.observationRegistry = observationRegistry;
-        this.orderRepository = orderRepository;
-    }
 
     public Order processOrder(OrderRequest request) {
         return Observation.createNotStarted("order.process", observationRegistry)
@@ -513,19 +508,15 @@ spec:
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"
-        - name: JAVA_TOOL_OPTIONS
-          value: "-XX:MaxRAMPercentage=75.0"
         livenessProbe:
           httpGet:
             path: /actuator/health/liveness
             port: 8080
-          initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /actuator/health/readiness
             port: 8080
-          initialDelaySeconds: 15
           periodSeconds: 5
         startupProbe:
           httpGet:
@@ -536,17 +527,29 @@ spec:
           failureThreshold: 20
         lifecycle:
           preStop:
-            exec:
-              command: ["sh", "-c", "sleep 10"]
+            sleep:
+              seconds: 10
         resources:
           requests:
             memory: "512Mi"
             cpu: "250m"
           limits:
             memory: "1Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
 ---
 apiVersion: v1
 kind: Service
@@ -609,6 +612,8 @@ spec:
             port:
               number: 80
 ```
+
+This Ingress routes only `/api/users`. If the service exposes an OpenAPI spec (springdoc), serve it under that prefix (`/api/users/v3/api-docs`, `/api/users/swagger-ui.html`) so this rule covers it; see "Behind a Kubernetes Ingress" in `web.md`.
 
 cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see security reference).
 
@@ -722,6 +727,8 @@ public class ClientConfig {
 ./mvnw -Pnative spring-boot:build-image
 ```
 
+Gradle: apply the `org.graalvm.buildtools.native` plugin next to `org.springframework.boot`, then `./gradlew nativeCompile` builds the native executable and `./gradlew bootBuildImage` a native image.
+
 Benefits: ~50ms startup, ~50MB RSS memory. Trade-offs: longer build time, reflection requires hints.
 
 ## Graceful Shutdown
@@ -743,8 +750,8 @@ spec:
   - name: app
     lifecycle:
       preStop:
-        exec:
-          command: ["sh", "-c", "sleep 10"]
+        sleep:            # native sleep action (Kubernetes 1.30+); buildpack images have no shell
+          seconds: 10
 ```
 
 ## Docker Configuration
@@ -764,17 +771,20 @@ COPY src src
 RUN ./mvnw package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S app -G app && apk add --no-cache curl
+RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app && apk add --no-cache curl
 WORKDIR /app
 COPY --from=build /workspace/app/target/*.jar app.jar
-USER app
+# Numeric UID, so Kubernetes runAsNonRoot can verify it
+USER 1000
 HEALTHCHECK --interval=30s --timeout=3s CMD curl -sf http://localhost:8080/actuator/health || exit 1
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 ```
+
+For the Gradle build stage see the `devops-engineer` agent.
 
 ### Paketo Buildpacks (Recommended)
 
-Paketo Buildpacks build OCI images without a Dockerfile. Integrated into Spring Boot Maven plugin.
+Paketo Buildpacks build OCI images without a Dockerfile. Integrated into the Spring Boot Maven and Gradle plugins.
 
 ```bash
 # Build image (uses Paketo by default)
@@ -784,6 +794,9 @@ Paketo Buildpacks build OCI images without a Dockerfile. Integrated into Spring 
 # Build native image with Paketo
 ./mvnw -Pnative spring-boot:build-image \
   -Dspring-boot.build-image.imageName=myapp:1.0.0-native
+
+# Gradle (native when the org.graalvm.buildtools.native plugin is applied)
+./gradlew bootBuildImage --imageName=myapp:1.0.0
 ```
 
 ```xml
@@ -796,18 +809,25 @@ Paketo Buildpacks build OCI images without a Dockerfile. Integrated into Spring 
             <name>${project.artifactId}:${project.version}</name>
             <env>
                 <BP_JVM_VERSION>21</BP_JVM_VERSION>
-                <BPE_JAVA_TOOL_OPTIONS>-XX:MaxRAMPercentage=75.0</BPE_JAVA_TOOL_OPTIONS>
             </env>
         </image>
     </configuration>
 </plugin>
 ```
 
+```kotlin
+// build.gradle.kts - Paketo configuration
+tasks.bootBuildImage {
+    imageName = "${project.name}:${project.version}"
+    environment = mapOf("BP_JVM_VERSION" to "21")
+}
+```
+
 Advantages over Dockerfile:
 - Reproducible builds, no Dockerfile to maintain
 - Automatic security patching of base image layers
 - Optimized layering (dependencies cached separately from app code)
-- Supported by Spring Boot Maven plugin out of the box
+- Supported by the Spring Boot Maven and Gradle plugins out of the box
 
 ## Local K8s Development with Skaffold
 
@@ -830,6 +850,8 @@ build:
         paths:
         - src/**
         - pom.xml
+        # Gradle: buildCommand ./gradlew bootBuildImage --imageName=$IMAGE -q
+        # and paths build.gradle*, settings.gradle*, gradle.properties, gradle/** instead of pom.xml
 deploy:
   kubectl:
     manifests:
