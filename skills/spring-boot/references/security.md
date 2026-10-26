@@ -19,8 +19,8 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
-                // OpenAPI spec and Swagger UI (springdoc, see web.md)
-                .requestMatchers("/v3/api-docs/**", "/v3/api-docs.yaml", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                // OpenAPI spec file and Swagger UI (springdoc, see web.md)
+                .requestMatchers("/openapi.yaml", "/v3/api-docs/swagger-config", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
                 .anyRequest().authenticated()
@@ -240,36 +240,70 @@ public class CustomUserDetailsService implements UserDetailsService {
 
 ## Authentication Controller
 
+The auth endpoints are part of the contract-first spec (see "Contract-First REST API" in `web.md`). The spec marks the public operations with `security: []` and holds the request and response models:
+
+```yaml
+# openapi.yaml (excerpt): register, login and refresh opt out of the global bearerAuth
+/api/auth/register:
+  post:
+    tags: [Auth]
+    operationId: register
+    security: []
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } } }
+    responses:
+      '201': { description: Registered, content: { application/json: { schema: { $ref: '#/components/schemas/AuthenticationResponse' } } } }
+      '409': { $ref: '#/components/responses/Conflict' }
+/api/auth/login:
+  post:
+    tags: [Auth]
+    operationId: login
+    security: []
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+    responses:
+      '200': { description: Logged in, content: { application/json: { schema: { $ref: '#/components/schemas/AuthenticationResponse' } } } }
+      '401': { $ref: '#/components/responses/Unauthorized' }
+/api/auth/refresh:
+  post:
+    tags: [Auth]
+    operationId: refreshToken
+    security: []
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RefreshTokenRequest' } } } }
+    responses:
+      '200': { description: New access token, content: { application/json: { schema: { $ref: '#/components/schemas/AuthenticationResponse' } } } }
+      '401': { $ref: '#/components/responses/Unauthorized' }
+/api/auth/logout:
+  post:
+    tags: [Auth]
+    operationId: logout
+    responses:
+      '204': { description: Logged out }
+# components.schemas: RegisterRequest (email, password, username), LoginRequest (email, password),
+# RefreshTokenRequest (refreshToken), AuthenticationResponse (required: [accessToken, refreshToken])
+```
+
 ```java
 @RestController
-@RequestMapping("/api/auth")
 @RequiredArgsConstructor
-public class AuthenticationController {
+public class AuthenticationController implements AuthApi {   // generated from the Auth tag
     private final AuthenticationService authenticationService;
 
-    @PostMapping("/register")
-    public ResponseEntity<AuthenticationResponse> register(
-            @Valid @RequestBody RegisterRequest request) {
-        AuthenticationResponse response = authenticationService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    @Override
+    public ResponseEntity<AuthenticationResponse> register(RegisterRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(authenticationService.register(request));
     }
 
-    @PostMapping("/login")
-    public ResponseEntity<AuthenticationResponse> login(
-            @Valid @RequestBody LoginRequest request) {
-        AuthenticationResponse response = authenticationService.login(request);
-        return ResponseEntity.ok(response);
+    @Override
+    public ResponseEntity<AuthenticationResponse> login(LoginRequest request) {
+        return ResponseEntity.ok(authenticationService.login(request));
     }
 
-    @PostMapping("/refresh")
-    public ResponseEntity<AuthenticationResponse> refreshToken(
-            @RequestBody RefreshTokenRequest request) {
-        AuthenticationResponse response = authenticationService.refreshToken(request);
-        return ResponseEntity.ok(response);
+    @Override
+    public ResponseEntity<AuthenticationResponse> refreshToken(RefreshTokenRequest request) {
+        return ResponseEntity.ok(authenticationService.refreshToken(request));
     }
 
-    @PostMapping("/logout")
-    @PreAuthorize("isAuthenticated()")
+    @Override
+    @PreAuthorize("isAuthenticated()")   // /api/auth/** is permitted in the filter chain
     public ResponseEntity<Void> logout() {
         SecurityContextHolder.clearContext();
         return ResponseEntity.noContent().build();
@@ -291,14 +325,14 @@ public class AuthenticationService {
     private final AuthenticationManager authenticationManager;
 
     public AuthenticationResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
+        if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("Email already registered");
         }
 
         User user = User.builder()
-            .email(request.email())
-            .password(passwordEncoder.encode(request.password()))
-            .username(request.username())
+            .email(request.getEmail())
+            .password(passwordEncoder.encode(request.getPassword()))
+            .username(request.getUsername())
             .build();
         // Load the persisted role: a new Role() would be transient and fail at flush
         Role userRole = roleRepository.findByName("USER")
@@ -316,12 +350,12 @@ public class AuthenticationService {
     public AuthenticationResponse login(LoginRequest request) {
         authenticationManager.authenticate(
             new UsernamePasswordAuthenticationToken(
-                request.email(),
-                request.password()
+                request.getEmail(),
+                request.getPassword()
             )
         );
 
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmail(request.getEmail())
             .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         String accessToken = jwtService.generateToken(convertToUserDetails(user));
@@ -331,20 +365,20 @@ public class AuthenticationService {
     }
 
     public AuthenticationResponse refreshToken(RefreshTokenRequest request) {
-        String username = jwtService.extractUsername(request.refreshToken());
+        String username = jwtService.extractUsername(request.getRefreshToken());
 
         User user = userRepository.findByEmail(username)
             .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         UserDetails userDetails = convertToUserDetails(user);
 
-        if (!jwtService.isTokenValid(request.refreshToken(), userDetails)) {
+        if (!jwtService.isTokenValid(request.getRefreshToken(), userDetails)) {
             throw new InvalidTokenException("Invalid refresh token");
         }
 
         String accessToken = jwtService.generateToken(userDetails);
 
-        return new AuthenticationResponse(accessToken, request.refreshToken());
+        return new AuthenticationResponse(accessToken, request.getRefreshToken());
     }
 
     private UserDetails convertToUserDetails(User user) {

@@ -228,8 +228,8 @@ skaffold run -p production
 ### Networking
 - `ClusterIP` Service for internal communication
 - Ingress for external HTTP traffic with TLS termination
-- OpenAPI docs (springdoc): the Ingress must route the docs paths. With one host per service and path `/` that happens automatically. With a shared host and a path prefix per service, the app serves the docs under its prefix (`/api/users/v3/api-docs`, `/api/users/swagger-ui.html`; see `web.md` in the `spring-boot` skill), so the prefix rule covers them. Do not add separate `/v3/api-docs` or `/swagger-ui` rules on a shared host, because each service would claim them
-- Forwarded headers need no setting: Spring Boot detects Kubernetes and applies `server.forward-headers-strategy=native`, so the spec's server URL is the public `https` one
+- OpenAPI docs (springdoc): the Ingress must route the docs paths. With one host per service and path `/` that happens automatically. With a shared host and a path prefix per service, the app serves the docs under its prefix (`/api/users/openapi.yaml`, `/api/users/swagger-ui.html`; see `web.md` in the `spring-boot` skill), so the prefix rule covers them. Do not add separate `/openapi.yaml`, `/v3/api-docs` or `/swagger-ui` rules on a shared host, because each service would claim them
+- Forwarded headers need no setting: Spring Boot detects Kubernetes and applies `server.forward-headers-strategy=native`. The spec has no `servers` entry, so Swagger UI calls the public host it was loaded from
 - `NetworkPolicy` to restrict pod-to-pod traffic
 
 ### Security

@@ -283,17 +283,15 @@ public BigDecimal calculateShipping(Address address) {
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handle(Exception ex) {
+    // List the exceptions: a catch-all Exception handler would also turn Spring Security's 403 into a 500
+    @ExceptionHandler({EntityNotFoundException.class, DataIntegrityViolationException.class,
+            ConstraintViolationException.class})
+    public ProblemDetail handle(RuntimeException ex) {
         return switch (ex) {
-            case EntityNotFoundException e ->
-                ResponseEntity.status(404).body(new ErrorResponse(e.getMessage()));
-            case DataIntegrityViolationException e ->
-                ResponseEntity.status(409).body(new ErrorResponse("Duplicate entry"));
-            case ConstraintViolationException e ->
-                ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
-            default ->
-                ResponseEntity.internalServerError().body(new ErrorResponse("Unexpected error"));
+            case EntityNotFoundException e -> ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+            case DataIntegrityViolationException e -> ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Duplicate entry");
+            case ConstraintViolationException e -> ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+            default -> throw ex;   // not reached: only the listed exceptions get here
         };
     }
 }
