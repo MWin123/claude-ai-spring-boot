@@ -1,199 +1,317 @@
 # Web Layer - Controllers & REST APIs
 
-## REST Controller Pattern
+## Contract-First REST API (OpenAPI Generator)
+
+The API is spec-first: a hand-written OpenAPI spec is the contract, and the build generates the controller interfaces and the request/response models from it. The controllers implement the generated interfaces. They never declare `@RequestMapping`, `@PathVariable`, `@RequestBody` or `@Valid`, because those come from the interface. To change the API, edit the spec and rebuild. Never edit generated code, and never write a controller mapping or API DTO that the spec does not define.
+
+| Piece | Where | Written by |
+|-------|-------|------------|
+| Spec (OpenAPI 3.0.x) | `src/main/resources/static/openapi.yaml` (also served to Swagger UI, see below) | You |
+| API interfaces (`UsersApi`, one per tag) | `<base package>.api`, under `target/generated-sources/openapi` (Maven) or `build/generated/openapi` (Gradle) | Generator |
+| Models (`CreateUserRequest`, `UserResponse`) | `<base package>.api.model` | Generator |
+| Controllers implementing the interfaces | `<base package>.controller` | You |
+
+Keep the spec on OpenAPI 3.0.x (`openapi: 3.0.3`), because the generator's 3.1 support is incomplete. Leave `servers` out, so Swagger UI calls the host it was loaded from.
+
+### The Spec
+
+```yaml
+# src/main/resources/static/openapi.yaml
+openapi: 3.0.3
+info:
+  title: User API
+  version: 1.0.0          # keep in step with the project version
+security:
+  - bearerAuth: []        # every operation needs a JWT unless it says otherwise
+paths:
+  /api/v1/users:
+    get:
+      tags: [Users]       # one generated interface per tag: UsersApi
+      operationId: listUsers   # becomes the Java method name
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: One page of users
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+    post:
+      tags: [Users]
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: Created
+          headers: { Location: { schema: { type: string, format: uri } } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /api/v1/users/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Users]
+      operationId: getUser
+      responses:
+        '200':
+          description: The user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Users]
+      operationId: deleteUser
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  responses:                # shared error responses, referenced per operation
+    BadRequest:
+      description: Invalid request
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/ProblemDetail' } } }
+    NotFound:
+      description: Not found
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/ProblemDetail' } } }
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    CreateUserRequest:
+      type: object
+      required: [email, username]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }        # @NotNull @Email @Size
+        username: { type: string, minLength: 3, maxLength: 50, pattern: '^[a-zA-Z0-9_]+$' }
+        age: { type: integer, minimum: 18, maximum: 120 }             # @Min @Max
+    UserResponse:
+      type: object
+      required: [id, email, username]
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string }
+        username: { type: string }
+        createdAt: { type: string, format: date-time }                # OffsetDateTime
+    UserPage:
+      type: object
+      required: [content, totalElements]
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/UserResponse' } }
+        totalElements: { type: integer, format: int64 }
+    ProblemDetail:          # mapped to Spring's ProblemDetail, not generated (schemaMappings below)
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+```
+
+Validation lives in the spec: `required` becomes `@NotNull`, while `minLength`/`maxLength`, `minimum`/`maximum`, `pattern` and `format: email` become `@Size`, `@Min`/`@Max`, `@Pattern` and `@Email`. A required request body gets `@Valid @RequestBody` on the generated method. Mark a public operation (e.g. login) with `security: []`.
+
+### Spec Design Checklist
+
+Before writing or changing the spec, settle these points. Take the answer from the request, the existing code or the existing spec. Ask the user only about a point that none of them settles and that would be costly to change later (auth, versioning, error format). For the rest, apply the default and say so in the report. Show the user the finished YAML before generating code from it.
+
+| Topic | Decide | Default |
+|-------|--------|---------|
+| Resources and operations | Nouns for paths (`/users/{id}`), HTTP verbs for actions; every operation has a unique `operationId` and a tag per resource | Plural nouns, `kebab-case` path segments, `camelCase` `operationId` (`listUsers`) |
+| Versioning | Where the version lives | `/api/v1/...` prefix; `info.version` follows the project version |
+| Authentication | Which operations are public | JWT bearer scheme on every operation; `security: []` only on login, registration and similar |
+| Authorization | Who may call what | Not in the spec: enforce with Spring Security. Mention the required role in the operation `description` |
+| Pagination | Every list operation that can grow | `page` (min 0, default 0) and `size` (min 1, max 100, default 20) query parameters; response with `content` and `totalElements`. Never return an unbounded array |
+| Filtering and sorting | Which fields are queryable | Only the ones the request needs, as explicit query parameters |
+| Success responses | Status code per operation | `200` read/update, `201` create (with `Location` header), `204` delete or no body |
+| Errors | Which failures each operation can produce | `400` for operations with input, `404` for operations with `{id}`, `409` for unique-field conflicts, `401`/`403` follow from `security`. All `application/problem+json` with the `ProblemDetail` schema |
+| Constraints | Every input field | `required` where the service needs the value; `minLength`/`maxLength` on every string, `minimum`/`maximum` on numbers, `pattern` or `format` where it applies. No unbounded strings |
+| Schemas | Separate request and response schemas | `CreateXRequest` / `UpdateXRequest` / `XResponse`; never one schema for both directions; no entity fields the client must not see (password hashes, internal ids); IDs `int64` or `uuid` |
+| Update semantics | Full or partial update | `PUT` replaces (all fields required), `PATCH` takes an all-optional schema |
+| Dates and money | Wire formats | `format: date-time` (ISO 8601, UTC) for instants, `format: date` for dates; money as a string or integer minor units, never `number` |
+| Enums and nullability | Closed value sets, optional vs nullable | `enum` only for sets the server controls; `required` marks always-present properties, `nullable: true` only where `null` carries meaning |
+| Compatibility | Is this a change to a published API? | Adding optional fields or operations is safe; removing or renaming fields, tightening constraints, changing status codes or making a field required needs a new version or the user's explicit approval |
+
+Reuse shared pieces through `components` (`ProblemDetail`, `UserPage`, repeated parameters, standard error `responses`) instead of repeating them per operation, and give every schema, operation and non-obvious parameter a `description`. After editing, run the generator and read the generated interfaces to check that the Java signatures match the intended contract.
+
+### Generator Plugin
+
+The generator is not managed by the Spring Boot BOM. Look up the latest `openapi-generator-maven-plugin` release on Maven Central (7.26.0 at the time of writing; the Gradle plugin `org.openapi.generator` has the same version). `useSpringBoot4` needs 7.x.
+
+```xml
+<properties>
+    <openapi-generator.version>7.x.y</openapi-generator.version>
+</properties>
+
+<plugin>
+    <groupId>org.openapitools</groupId>
+    <artifactId>openapi-generator-maven-plugin</artifactId>
+    <version>${openapi-generator.version}</version>
+    <executions>
+        <execution>
+            <goals><goal>generate</goal></goals>
+            <configuration>
+                <inputSpec>${project.basedir}/src/main/resources/static/openapi.yaml</inputSpec>
+                <generatorName>spring</generatorName>
+                <apiPackage>com.example.api</apiPackage>             <!-- base package + .api -->
+                <modelPackage>com.example.api.model</modelPackage>
+                <generateSupportingFiles>false</generateSupportingFiles>
+                <schemaMappings>ProblemDetail=org.springframework.http.ProblemDetail</schemaMappings>
+                <configOptions>
+                    <interfaceOnly>true</interfaceOnly>              <!-- interfaces + models, no stub controllers -->
+                    <useSpringBoot4>true</useSpringBoot4>            <!-- jakarta.*, Boot 4 -->
+                    <useTags>true</useTags>                          <!-- UsersApi per tag, not per path segment -->
+                    <skipDefaultInterface>true</skipDefaultInterface><!-- unimplemented operations fail to compile -->
+                    <openApiNullable>false</openApiNullable>         <!-- no jackson-databind-nullable (Jackson 2) -->
+                    <documentationProvider>none</documentationProvider> <!-- Swagger UI shows the spec file itself -->
+                    <generateJsonIncludeAnnotations>false</generateJsonIncludeAnnotations>
+                    <generateJsonSetterNullsAnnotations>false</generateJsonSetterNullsAnnotations>
+                </configOptions>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+```
+
+The plugin runs in `generate-sources` and adds the output to the compile sources. In Gradle, wire it in yourself:
+
+```kotlin
+// build.gradle.kts
+plugins {
+    id("org.openapi.generator") version "7.x.y"
+}
+
+openApiGenerate {
+    generatorName = "spring"
+    inputSpec = layout.projectDirectory.file("src/main/resources/static/openapi.yaml")
+    outputDir = layout.buildDirectory.dir("generated/openapi")
+    apiPackage = "com.example.api"
+    modelPackage = "com.example.api.model"
+    globalProperties = mapOf("apis" to "", "models" to "")   // no supporting files
+    schemaMappings = mapOf("ProblemDetail" to "org.springframework.http.ProblemDetail")
+    configOptions = mapOf(
+        "interfaceOnly" to "true",
+        "useSpringBoot4" to "true",
+        "useTags" to "true",
+        "skipDefaultInterface" to "true",
+        "openApiNullable" to "false",
+        "documentationProvider" to "none",
+        "generateJsonIncludeAnnotations" to "false",
+        "generateJsonSetterNullsAnnotations" to "false",
+    )
+}
+
+sourceSets { main { java { srcDir(layout.buildDirectory.dir("generated/openapi/src/main/java")) } } }
+tasks.compileJava { dependsOn(tasks.openApiGenerate) }
+```
+
+The generated code needs `spring-boot-starter-validation`; everything else comes with the web starter. For a WebFlux app, add `reactive=true` to the config options. The methods then return `Mono<ResponseEntity<...>>`, take `Mono<Body>` and get a trailing `ServerWebExchange` parameter.
+
+### Controller
 
 ```java
 @RestController
-@RequestMapping("/api/users")
-@Validated
 @RequiredArgsConstructor
-public class UserController {
+public class UserController implements UsersApi {
     private final UserService userService;
-    
-    @GetMapping
-    public ResponseEntity<Page<UserResponse>> getUsers(
-            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable) {
-        Page<UserResponse> users = userService.findAll(pageable);
-        return ResponseEntity.ok(users);
+
+    @Override
+    public ResponseEntity<UserPage> listUsers(Integer page, Integer size) {
+        return ResponseEntity.ok(userService.findAll(PageRequest.of(page, size, Sort.by("createdAt"))));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUser(@PathVariable Long id) {
-        UserResponse user = userService.findById(id);
-        return ResponseEntity.ok(user);
+    @Override
+    public ResponseEntity<UserResponse> getUser(Long id) {
+        return ResponseEntity.ok(userService.findById(id));
     }
 
-    @PostMapping
-    public ResponseEntity<UserResponse> createUser(
-            @Valid @RequestBody UserCreateRequest request) {
+    @Override
+    public ResponseEntity<UserResponse> createUser(CreateUserRequest request) {
         UserResponse user = userService.create(request);
-        URI location = ServletUriComponentsBuilder
-                .fromCurrentRequest()
-                .path("/{id}")
-                .buildAndExpand(user.id())
-                .toUri();
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}").buildAndExpand(user.getId()).toUri();
         return ResponseEntity.created(location).body(user);
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<UserResponse> updateUser(
-            @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest request) {
-        UserResponse user = userService.update(id, request);
-        return ResponseEntity.ok(user);
-    }
-
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteUser(@PathVariable Long id) {
+    @Override
+    public ResponseEntity<Void> deleteUser(Long id) {
         userService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }
 ```
 
-## Request DTOs with Validation
+Only the parameters go in the override: mappings, binding and validation annotations are inherited from the interface. Status codes come from the spec, so return `ResponseEntity` with the status it declares (201 + `Location`, 204). `@WebMvcTest(UserController.class)` tests work unchanged against the paths in the spec.
+
+The generated interfaces are `@Validated`. A query or path parameter that breaks its spec constraint (`size=500` against `maximum: 100`) therefore throws `ConstraintViolationException`, which ends up as a 500 unless the global handler maps it (see "Global Exception Handling" below). An invalid body still raises `MethodArgumentNotValidException` as usual.
+
+### Models and Mapping
+
+The generator (7.x) produces the models as mutable classes with getters, fluent setters and a constructor taking the required properties, not as records. They count as generated code, not hand-written DTOs. Use them directly at the API boundary: don't wrap them in parallel records, and don't add methods to them. Map between entities and models in a hand-written mapper next to the service:
 
 ```java
-public record UserCreateRequest(
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email must be valid")
-    String email,
+final class UserMapper {
+    private UserMapper() {}
 
-    @NotBlank(message = "Password is required")
-    @Size(min = 8, max = 100, message = "Password must be 8-100 characters")
-    @Pattern(regexp = "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d).*$",
-             message = "Password must contain uppercase, lowercase, and digit")
-    String password,
+    static UserResponse toResponse(User user) {
+        return new UserResponse(user.getId(), user.getEmail(), user.getUsername())
+                .createdAt(user.getCreatedAt());   // optional properties via fluent setters
+    }
 
-    @NotBlank(message = "Username is required")
-    @Size(min = 3, max = 50)
-    @Pattern(regexp = "^[a-zA-Z0-9_]+$", message = "Username must be alphanumeric")
-    String username,
-
-    @Min(value = 18, message = "Must be at least 18")
-    @Max(value = 120, message = "Must be at most 120")
-    Integer age
-) {}
-
-public record UserUpdateRequest(
-    @Email(message = "Email must be valid")
-    String email,
-
-    @Size(min = 3, max = 50)
-    String username
-) {}
-```
-
-## Response DTOs
-
-```java
-public record UserResponse(
-    Long id,
-    String email,
-    String username,
-    Integer age,
-    Boolean active,
-    LocalDateTime createdAt,
-    LocalDateTime updatedAt
-) {
-    public static UserResponse from(User user) {
-        return new UserResponse(
-            user.getId(),
-            user.getEmail(),
-            user.getUsername(),
-            user.getAge(),
-            user.getActive(),
-            user.getCreatedAt(),
-            user.getUpdatedAt()
-        );
+    static User toEntity(CreateUserRequest request) {
+        return User.builder().email(request.getEmail()).username(request.getUsername())
+                .age(request.getAge()).build();
     }
 }
 ```
+
+Records stay the rule for every other DTO and value type (service results, events, `@ConfigurationProperties`).
 
 ## Global Exception Handling
+
+Every error is a `ProblemDetail` (`application/problem+json`), matching the error responses in the spec. Extending `ResponseEntityExceptionHandler` covers Spring MVC's own exceptions and `ErrorResponseException` subclasses (see "Problem Details" below). Don't add an `@ExceptionHandler(Exception.class)`: it also catches the `AuthorizationDeniedException` of `@PreAuthorize`, turning Spring Security's 403 into a 500, and Spring Boot already logs unhandled exceptions and answers 500 without details.
 
 ```java
 @RestControllerAdvice
 @Slf4j
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleNotFound(
-            ResourceNotFoundException ex, WebRequest request) {
-        log.error("Resource not found: {}", ex.getMessage());
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.NOT_FOUND.value(),
-            ex.getMessage(),
-            request.getDescription(false),
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
+    public ProblemDetail handleNotFound(ResourceNotFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ValidationErrorResponse> handleValidation(
-            MethodArgumentNotValidException ex) {
-        Map<String, String> errors = ex.getBindingResult()
-            .getFieldErrors()
-            .stream()
-            .collect(Collectors.toMap(
-                FieldError::getField,
-                error -> error.getDefaultMessage() != null
-                    ? error.getDefaultMessage()
-                    : "Invalid value"
-            ));
-
-        ValidationErrorResponse response = new ValidationErrorResponse(
-            HttpStatus.BAD_REQUEST.value(),
-            "Validation failed",
-            errors,
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+    @ExceptionHandler(ConstraintViolationException.class)   // query/path parameters (@Validated interfaces)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage()); // "listUsers.size: must be less than or equal to 100"
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ErrorResponse> handleDataIntegrity(
-            DataIntegrityViolationException ex, WebRequest request) {
-        log.error("Data integrity violation", ex);
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.CONFLICT.value(),
-            "Data integrity violation - resource may already exist",
-            request.getDescription(false),
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(error, HttpStatus.CONFLICT);
+    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation", ex);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Resource may already exist");
     }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGlobalException(
-            Exception ex, WebRequest request) {
-        log.error("Unexpected error", ex);
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.INTERNAL_SERVER_ERROR.value(),
-            "An unexpected error occurred",
-            request.getDescription(false),
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+    @Override   // invalid body: add the field errors to the 400 response
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        ex.getBody().setProperty("errors", ex.getBindingResult().getFieldErrors().stream()
+                .collect(Collectors.toMap(FieldError::getField,
+                        error -> Objects.requireNonNullElse(error.getDefaultMessage(), "Invalid value"),
+                        (first, second) -> first)));   // a field can break several constraints
+        return super.handleMethodArgumentNotValid(ex, headers, status, request);
     }
 }
-
-record ErrorResponse(
-    int status,
-    String message,
-    String path,
-    LocalDateTime timestamp
-) {}
-
-record ValidationErrorResponse(
-    int status,
-    String message,
-    Map<String, String> errors,
-    LocalDateTime timestamp
-) {}
 ```
 
 ## Custom Validation
+
+Put a custom constraint on a generated model with the `x-field-extra-annotation` vendor extension on the property in the spec (`x-field-extra-annotation: "@com.example.validation.UniqueEmail"`), so the annotation survives regeneration:
 
 ```java
 @Target({ElementType.FIELD, ElementType.PARAMETER})
@@ -280,15 +398,7 @@ public class WebConfig implements WebMvcConfigurer {
 
 ## Problem Details (RFC 7807)
 
-```yaml
-# application.yml - enables standard error response format
-spring:
-  mvc:
-    problemdetails:
-      enabled: true
-```
-
-With this enabled, Spring Boot returns RFC 7807 responses for standard exceptions:
+With the handler above, every error response follows RFC 7807 (`spring.mvc.problemdetails.enabled` registers Boot's own `ResponseEntityExceptionHandler`, which backs off for this one):
 
 ```json
 {
@@ -316,9 +426,9 @@ public class UserNotFoundException extends ErrorResponseException {
 }
 ```
 
-## OpenAPI Spec (springdoc)
+## Swagger UI (springdoc)
 
-Every REST API gets a generated OpenAPI spec. Pick the starter from the build file (`pom.xml` or `build.gradle(.kts)`), and skip this step if any `springdoc-openapi-starter-*` dependency is already there:
+springdoc hosts Swagger UI for the hand-written spec (see "Contract-First REST API" above). Swagger UI loads `openapi.yaml` itself, so it shows the contract exactly as written, including `info`, the security schemes and the "Authorize" button, with no `@OpenAPIDefinition`, `@SecurityScheme` or `@Operation` annotations in Java. Pick the starter from the build file (`pom.xml` or `build.gradle(.kts)`), and skip this step if any `springdoc-openapi-starter-*` dependency is already there:
 
 | Build file contains | Add |
 |--------------------|-----|
@@ -345,56 +455,46 @@ Use springdoc 3.x, the line for Boot 4 (2.x is for Boot 3). Look up the latest 3
 implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.x.y") // or -webflux-ui
 ```
 
-springdoc reads the mappings, records and Bean Validation annotations. Add `@Operation`/`@Schema` only where the generated output is unclear, not on every endpoint.
-
 ### Endpoints (same for WebMVC and WebFlux)
 
 | Path | Serves |
 |------|--------|
-| `/v3/api-docs` | Spec as JSON |
-| `/v3/api-docs.yaml` | Spec as YAML |
-| `/v3/api-docs/swagger-config` | UI config, loaded by Swagger UI |
+| `/openapi.yaml` | The hand-written spec, as a static resource from `src/main/resources/static/` |
 | `/swagger-ui.html` | Redirects to `/swagger-ui/index.html` |
 | `/swagger-ui/**` | Swagger UI assets |
+| `/v3/api-docs/swagger-config` | UI config, loaded by Swagger UI; points it at `/openapi.yaml` |
+
+springdoc also serves its own spec at `/v3/api-docs`, rebuilt from the controller mappings. Swagger UI does not use it, and since the contract is `openapi.yaml` it stays out of the permitted paths below. Keep it enabled anyway: `springdoc.api-docs.enabled: false` also switches off `swagger-config` and Swagger UI.
 
 ### Configuration
 
 ```yaml
-# application.yml - the defaults, set explicitly so the security matchers below stay in sync
+# application.yml
 springdoc:
-  api-docs:
-    path: /v3/api-docs
   swagger-ui:
-    path: /swagger-ui.html
+    url: /openapi.yaml           # show the hand-written spec, not springdoc's /v3/api-docs
 ```
 
-The spec and Swagger UI stay enabled in production. springdoc builds the spec's `servers` URL from the request, so behind a reverse proxy or load balancer it must honor the forwarded headers, or Swagger UI calls `http://<internal-host>` instead of the public `https` URL. On Kubernetes, Spring Boot detects the platform and applies `native` by default, so no setting is needed there (and the pods run the `kubernetes` profile, not `prod`). Everywhere else:
-
-```yaml
-# application-prod.yml
-server:
-  forward-headers-strategy: native   # X-Forwarded-Proto/Host/Port -> https://api.example.com in servers[0].url
-```
-
-Use `native`, not `framework`: with Tomcat it trusts the headers only from private-network proxy addresses (`server.tomcat.remoteip.internal-proxies`), while `framework` trusts them from any client.
+The spec and Swagger UI stay enabled in production. The spec has no `servers` entry, so Swagger UI calls the host and scheme it was loaded from, and behind a reverse proxy the docs need no forwarded-header setting.
 
 ### Behind a Kubernetes Ingress
 
 The Ingress must route the docs paths to the pod:
 
 - **One host per service** (`users.example.com`, path `/`): the default paths work as they are.
-- **Shared host, one path prefix per service** (`api.example.com/api/users`): every service would claim `/v3/api-docs`. Move the docs under the service's prefix, so the existing Ingress rule covers them and each service keeps its own docs:
+- **Shared host, one path prefix per service** (`api.example.com/api/users`): every service would claim `/openapi.yaml` and `/swagger-ui.html`. Move the docs under the service's prefix, so the existing Ingress rule covers them and each service keeps its own docs. Move the spec file to `src/main/resources/static/api/users/openapi.yaml`, point the generator's `inputSpec` at the new location, and set:
 
 ```yaml
 # application.yml
 springdoc:
   api-docs:
-    path: /api/users/v3/api-docs        # YAML at /api/users/v3/api-docs.yaml
+    path: /api/users/v3/api-docs        # swagger-config moves to /api/users/v3/api-docs/swagger-config
   swagger-ui:
     path: /api/users/swagger-ui.html    # UI assets move to /api/users/swagger-ui/**
+    url: /api/users/openapi.yaml
 ```
 
-Prefix the security matchers the same way (`/api/users/v3/api-docs/**`, `/api/users/v3/api-docs.yaml`, `/api/users/swagger-ui/**`, `/api/users/swagger-ui.html`), and put them before any `/api/users/**` role rule: the first matching rule wins.
+Prefix the security matchers the same way (`/api/users/openapi.yaml`, `/api/users/v3/api-docs/swagger-config`, `/api/users/swagger-ui/**`, `/api/users/swagger-ui.html`), and put them before any `/api/users/**` role rule: the first matching rule wins.
 
 If CSRF protection is on, "Try it out" needs two things, or POST/PUT/DELETE are rejected: Spring Security must issue the `XSRF-TOKEN` cookie eagerly and accept its raw value, which `csrf.spa()` does (see `security.md`; a bare `CookieCsrfTokenRepository.withHttpOnlyFalse()` issues no cookie for Swagger UI), and Swagger UI must send it back. With CSRF disabled, leave this out:
 
@@ -408,24 +508,15 @@ springdoc:
 
 ### Authentication in Swagger UI
 
-For an API secured with JWT, declare the bearer scheme once, so Swagger UI shows the "Authorize" button and sends `Authorization: Bearer <token>` with every call:
-
-```java
-@Configuration
-@OpenAPIDefinition(security = @SecurityRequirement(name = "bearerAuth"))
-@SecurityScheme(name = "bearerAuth", type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT")
-public class OpenApiConfig {}
-```
-
-Mark public endpoints (e.g. login) with `@SecurityRequirements` (empty) so the spec doesn't show them as secured.
+For an API secured with JWT, the spec declares the bearer scheme (`components.securitySchemes.bearerAuth` plus the top-level `security`, as in "The Spec" above). Swagger UI then shows the "Authorize" button and sends `Authorization: Bearer <token>` with every call. Operations with `security: []` (e.g. login) are shown as public. No Java configuration is needed.
 
 ### Spring Security
 
-If Spring Security is present, permit the paths above in every profile, production included. Only the docs become public: the API endpoints stay authenticated, and Swagger UI calls them with the token from "Authorize". `/v3/api-docs/**` does not match `/v3/api-docs.yaml`, so list it separately:
+If Spring Security is present, permit the paths above in every profile, production included. Only the docs become public: the API endpoints stay authenticated, and Swagger UI calls them with the token from "Authorize". springdoc's own `/v3/api-docs` stays authenticated, so permit only its `swagger-config` child:
 
 ```java
 private static final String[] OPENAPI_PATHS = {
-    "/v3/api-docs/**", "/v3/api-docs.yaml", "/swagger-ui/**", "/swagger-ui.html"
+    "/openapi.yaml", "/v3/api-docs/swagger-config", "/swagger-ui/**", "/swagger-ui.html"
 };
 
 // WebMVC: SecurityFilterChain
@@ -441,20 +532,7 @@ private static final String[] OPENAPI_PATHS = {
 
 ### Tests
 
-- Positive: `GET /v3/api-docs` returns 200 without credentials and the JSON contains the controller paths (e.g. `$.paths['/api/users']`) and `components.securitySchemes.bearerAuth`.
-- Positive (prod profile): with `X-Forwarded-Proto: https` and `X-Forwarded-Host`, `servers[0].url` is the public `https` URL.
-- Negative: with Spring Security, an API endpoint still returns 401 without credentials, so the permit list didn't open more than the docs.
-
-## Quick Reference
-
-| Annotation | Purpose |
-|------------|---------|
-| `@RestController` | Marks class as REST controller (combines @Controller + @ResponseBody) |
-| `@RequestMapping` | Maps HTTP requests to handler methods |
-| `@GetMapping/@PostMapping` | HTTP method-specific mappings |
-| `@PathVariable` | Extracts values from URI path |
-| `@RequestParam` | Extracts query parameters |
-| `@RequestBody` | Binds request body to method parameter |
-| `@Valid` | Triggers validation on request body |
-| `@RestControllerAdvice` | Global exception handling for REST controllers |
-| `@ResponseStatus` | Sets HTTP status code for method |
+- Positive: without credentials, `GET /openapi.yaml` returns 200 and `GET /v3/api-docs/swagger-config` returns `$.url` = `/openapi.yaml`.
+- Positive: a valid create returns 201 with a `Location` header and the declared response body.
+- Negative: without credentials, `/v3/api-docs` and an API endpoint return 401, so the permit list opened only the docs.
+- Negative: an invalid body returns 400 with `errors.<field>`; a parameter outside its spec bounds (`size=500`) returns 400 `application/problem+json`, not 500.

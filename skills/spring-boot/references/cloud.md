@@ -54,25 +54,20 @@ spring:
 ## Dynamic Configuration Refresh
 
 ```java
-@RestController
-@RefreshScope
-public class ConfigController {
+@Component
+@RefreshScope   // recreated with the new values on the next call after a refresh
+public class FeatureFlags {
     @Value("${app.feature.enabled:false}")
     private boolean featureEnabled;
 
     @Value("${app.max-connections:100}")
     private int maxConnections;
 
-    @GetMapping("/config")
-    public Map<String, Object> getConfig() {
-        return Map.of(
-            "featureEnabled", featureEnabled,
-            "maxConnections", maxConnections
-        );
-    }
+    public boolean featureEnabled() { return featureEnabled; }
+    public int maxConnections() { return maxConnections; }
 }
 
-// Refresh configuration via Actuator endpoint:
+// Inject FeatureFlags into services; refresh via the Actuator endpoint:
 // POST /actuator/refresh
 ```
 
@@ -613,7 +608,7 @@ spec:
               number: 80
 ```
 
-This Ingress routes only `/api/users`. If the service exposes an OpenAPI spec (springdoc), serve it under that prefix (`/api/users/v3/api-docs`, `/api/users/swagger-ui.html`) so this rule covers it; see "Behind a Kubernetes Ingress" in `web.md`.
+This Ingress routes only `/api/users`. If the service exposes its OpenAPI spec and Swagger UI (springdoc), serve them under that prefix (`/api/users/openapi.yaml`, `/api/users/swagger-ui.html`) so this rule covers them; see "Behind a Kubernetes Ingress" in `web.md`.
 
 cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see security reference).
 
