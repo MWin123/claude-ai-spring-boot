@@ -4,7 +4,7 @@ Production-ready skills and agents for building Spring Boot 4.x / Java 21+ appli
 
 ## Installation
 
-Run the setup script from a Spring Boot project that uses Maven or Gradle (it needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise, so create a new project first, e.g. with Spring Initializr). It copies `agents/`, `skills/` and `settings.json` into `.claude/` and `CLAUDE.md` into the project root:
+Run the setup script from a Spring Boot project that uses Maven or Gradle (it needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise, so create a new project first, e.g. with Spring Initializr). It copies `agents/`, `skills/` and `config/settings.json` into `.claude/` and `config/CLAUDE.md` and `config/.gitignore` into the project root:
 
 ```bash
 cd my-project
@@ -17,7 +17,7 @@ Or pass the project directory explicitly from anywhere:
 /path/to/claude-ai-spring-boot/setup.sh /path/to/my-project
 ```
 
-The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched.
+The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched; an existing `.gitignore` keeps its rules and gets only the template's missing ones.
 
 Claude Code loads `.claude/agents/` and `.claude/skills/` from the project automatically, and `CLAUDE.md` from the project root. Start `claude` in the project directory to use them.
 
@@ -113,6 +113,8 @@ You can also invoke skills and agents directly:
 
 ```
 .
+├── .claude/settings.json   # Claude Code settings for working on this template
+├── .github/workflows/claude-files.yml
 ├── agents/
 │   ├── boot-migration.md
 │   ├── code-reviewer.md
@@ -142,11 +144,24 @@ You can also invoke skills and agents directly:
 │   │       ├── security.md
 │   │       └── web.md
 │   └── testing-patterns/SKILL.md
-├── CLAUDE.md
+├── config/                 # copied into the project
+│   ├── .gitignore          # Spring Boot ignore rules (root of the project)
+│   ├── CLAUDE.md           # project rules (root of the project)
+│   └── settings.json       # .claude/settings.json
+├── tests/                  # checks for this template, not copied by setup.sh
+├── CLAUDE.md               # rules for working on this template
 ├── README.md
-├── settings.json
 ├── setup.sh
 └── LICENSE
+```
+
+## Tests
+
+The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior, agent and skill frontmatter, references between files (sections, files, workflow steps, skill and agent names, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
+
+```bash
+pip install -r tests/requirements.txt
+pytest tests
 ```
 
 ## Blog Post

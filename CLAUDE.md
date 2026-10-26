@@ -1,34 +1,24 @@
+# claude-ai-spring-boot
+
+## Repository
+- This is a template, not an application: agents, skills and config that `setup.sh` copies into Spring Boot projects. There is no Spring Boot build here.
+- Copied into projects: `agents/` and `skills/` (to `.claude/`), `config/settings.json` (to `.claude/settings.json`), `config/CLAUDE.md` (to the project root), `config/.gitignore` (to the project root; only missing rules are added to an existing one). Everything else (`tests/`, `.github/`, `.claude/settings.json`, README, this file) stays here.
+- `config/CLAUDE.md` holds the rules for generated projects; don't apply them to this repository.
+
 ## Workflow
-- Use plan mode for non-trivial tasks (3+ steps or architectural decisions); write the spec upfront.
-- After a user correction, record the pattern in `tasks/lessons.md`; review it at session start.
-- Never mark a task done without proof: run tests, check logs, diff behavior against main when relevant.
-- Make the simplest change that works; find root causes, no temporary fixes. For non-trivial changes look for the more elegant solution, but don't overengineer.
+- Use plan mode for changes across several files or with design choices; write the plan upfront.
+- Before committing, run `shellcheck setup.sh` and `pytest tests` (`pip install -r tests/requirements.txt`). Never mark a task done with a failing or skipped check.
+- Prove changed Java, Maven, Gradle or YAML examples by building them in a throwaway Spring Boot project in a scratch directory (latest Boot 4.x, the documented plugin and library versions), with positive and negative tests. Never add that project to this repository.
+- Keep files short: say each rule once and refer to it from other files instead of repeating it. Simplify where possible without dropping features.
 
-## Project Rules
-- Spring Boot 4.x with Maven or Gradle (see Build Tool) and the latest stable dependency versions (Jackson 3, `@MockitoBean`, modular starters); see the Boot 4 reference in the `spring-boot` skill.
-- Write positive and negative tests for generated code.
-- Minimize generated code: records for DTOs/value types, pattern matching, switch expressions; Lombok only where a record can't replace the boilerplate (rules in the `java-modern` skill).
-- Project name = parent directory name in lowercase kebab-case (`MyApp` → `my-app`); keep an existing name, and ask only if it doesn't match that form (never rename silently); base package = group ID.
-- Semantic versioning: bump PATCH on each new version and update README.md.
-- Docker Compose: extend an existing `compose.yaml`/`docker-compose.yml`, otherwise generate `compose.yaml` with all needed components.
+## Consistency
+- A renamed section, file, workflow step, agent or skill must be renamed everywhere it is cited; the tests in `tests/test_references.py` find stale references.
+- New or renamed agents and skills go into the README tables and directory tree.
+- Facts repeated across files stay identical: docs security matchers, library versions, Boot 4 versions. Example code follows the template's own rules: contract-first controllers implementing generated `*Api` interfaces, exception handlers returning `ProblemDetail`, no Boot 3 leftovers.
+- When a test rule is too strict for a legitimate example, narrow the rule or add a documented exemption in the test; never weaken the example to satisfy it.
 
-## Build Tool
-- Determine it once, before the first build command, and reuse it for the session: `pom.xml` → Maven (`./mvnw`, else `mvn`); `build.gradle(.kts)` or, in a multi-project build, only `settings.gradle(.kts)` → Gradle (`./gradlew`, else `gradle`). Both present: ask which one builds the app. Neither: stop and ask the user to add one.
-- Name it in every subagent prompt (`Build tool: Gradle`).
-- Name, group and version: Maven `artifactId`, `groupId`, `version` in `pom.xml`; Gradle `rootProject.name` in `settings.gradle(.kts)` (directory name if unset), `group` and `version` in `build.gradle(.kts)` or `gradle.properties` (`./gradlew -q properties` shows the resolved values). Bump the version where it is defined. If the group or version is not set, ask for it before generating code.
-
-| Task | Maven | Gradle |
-|------|-------|--------|
-| Build with all tests | `./mvnw verify` | `./gradlew build` |
-| Unit tests | `./mvnw test` | `./gradlew test` |
-| Run | `./mvnw spring-boot:run` | `./gradlew bootRun` |
-| Image (Buildpacks) | `./mvnw spring-boot:build-image` | `./gradlew bootBuildImage` |
-| Output directory | `target/` | `build/` |
-
-- Dependency snippets in the skills are Maven XML. In Gradle use the same coordinates in the existing DSL (Kotlin or Groovy): `implementation`, `runtimeOnly` for runtime scope, `testImplementation` for test scope, `compileOnly` plus `annotationProcessor` for annotation processors such as Lombok.
-
-## Subagents
-- Anything that runs tests goes to `tests`. Relay its summary, never raw output.
-- Review a single commit or file with `quick-reviewer`.
-- When `spring-boot-engineer` reports Docker Compose or CI needs, pass them to `devops-engineer`.
-- Look up current or version-specific documentation (release notes, migration guides, library versions) with `docs-researcher` when the skills don't cover it; don't search the web yourself. Name the exact Boot and Java versions in the prompt (`Boot: 4.0.1, Java: 21`). Other subagents can't call it, so research first and pass the result in their prompt.
+## Commits and Pull Requests
+- Short title, then a one- or two-sentence body that says what changed.
+- Author and committer are the GitHub user of the session: look up the login with the GitHub tool `get_me` and commit with `git -c user.name=<login> -c user.email=<login>@users.noreply.github.com commit --no-gpg-sign`. If the lookup fails, ask instead of committing with the container's default identity.
+- Commits end with `Co-Authored-By: Claude <noreply@anthropic.com>`, so GitHub shows both.
+- No `Claude-Session` lines in commits or pull requests.
