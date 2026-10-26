@@ -16,9 +16,10 @@ These conventions apply to ALL code generated or reviewed in the project. Follow
 
 ## Mandatory Rules
 
-- **Records first, Lombok targeted** — records for DTOs/value types; Lombok only where a record cannot replace the boilerplate, following the Lombok rules in the `java-modern` skill
+- **Records first, Lombok targeted** — records for DTOs/value types; Lombok only where a record cannot replace the boilerplate, following the Lombok rules in the `java-modern` skill. API request/response models are the exception: they are generated from the spec (see next rule)
 - **Constructor injection** — no `@Autowired` on fields
-- **OpenAPI spec** — add `springdoc-openapi-starter-webmvc-ui` if `spring-boot-starter-webmvc` is present, otherwise `springdoc-openapi-starter-webflux-ui` if `spring-boot-starter-webflux` is; skip if a springdoc starter is already there (details in `spring-boot` `references/web.md`)
+- **Contract-first REST APIs** — a hand-written OpenAPI spec (`src/main/resources/static/openapi.yaml`) defines every endpoint. `openapi-generator` (`spring`, `interfaceOnly`, `useSpringBoot4`) generates the API interfaces and models at build time, and controllers implement those interfaces. Never hand-write `@RequestMapping` controllers or edit generated code; change the spec instead (details in `spring-boot` `references/web.md`)
+- **Swagger UI** — add `springdoc-openapi-starter-webmvc-ui` if `spring-boot-starter-webmvc` is present, otherwise `springdoc-openapi-starter-webflux-ui` if `spring-boot-starter-webflux` is; skip if a springdoc starter is already there. Point it at the spec file (`springdoc.swagger-ui.url: /openapi.yaml`)
 - **RestClient** over RestTemplate/WebClient for blocking HTTP calls
 - **RestTestClient** with `@AutoConfigureRestTestClient` for integration tests
 - **Testcontainers** with `@ServiceConnection` (not `@DynamicPropertySource`)
@@ -36,8 +37,8 @@ These conventions apply to ALL code generated or reviewed in the project. Follow
 
 - Use latest Spring Boot 4.x and Java 21+
 - `@Transactional(readOnly = true)` at service class level, `@Transactional` on mutating methods
-- `@Valid @RequestBody` on all POST/PUT endpoints
-- `@RestControllerAdvice` for global exception handling
+- Validation constraints in the spec (`required`, `minLength`, `maximum`, `pattern`, `format: email`); the generator puts `@Valid @RequestBody` and Bean Validation on the interfaces and models
+- `@RestControllerAdvice` extending `ResponseEntityExceptionHandler`, so every error is a Problem Detail (RFC 7807), including `ConstraintViolationException` → 400 (the generated interfaces are `@Validated`)
 - Return `ResponseEntity` with proper status codes (201 Created, 204 No Content)
 - `@ConfigurationProperties` for type-safe config (no raw `@Value` for groups)
 - `@HttpExchange` interfaces for declarative HTTP clients

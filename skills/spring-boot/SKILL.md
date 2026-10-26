@@ -85,37 +85,49 @@ public class ProductService {
 }
 ```
 
-### REST Controller
+### REST Controller (contract-first)
+
+The endpoints and models are defined in `src/main/resources/static/openapi.yaml`. openapi-generator turns each tag into an interface (`ProductsApi`) and each schema into a model (`ProductRequest`, `ProductResponse`) at build time, and the controller implements the interface (full setup in `references/web.md`):
+
+```yaml
+# openapi.yaml (excerpt)
+/api/v1/products:
+  post:
+    tags: [Products]
+    operationId: createProduct
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ProductRequest' }   # name: minLength 1, price: minimum 0
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductResponse' }
+```
+
 ```java
 @RestController
-@RequestMapping("/api/v1/products")
-@Validated
 @RequiredArgsConstructor
-public class ProductController {
+public class ProductController implements ProductsApi {   // generated: mappings, @Valid, Bean Validation
     private final ProductService service;
 
-    @GetMapping
-    public List<ProductResponse> search(@RequestParam(defaultValue = "") String name) {
-        return service.search(name);
-    }
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public ProductResponse create(@Valid @RequestBody ProductRequest request) {
-        return service.create(request);
+    @Override
+    public ResponseEntity<ProductResponse> createProduct(ProductRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request));
     }
 }
 ```
 
-### DTOs (Records)
+### Models and Mapping
 ```java
-public record ProductRequest(
-    @NotBlank String name,
-    @DecimalMin("0.0") BigDecimal price
-) {}
+// ProductRequest/ProductResponse are generated; map entities to them in one place
+final class ProductMapper {
+    private ProductMapper() {}
 
-public record ProductResponse(Long id, String name, BigDecimal price) {
-    public static ProductResponse from(Product product) {
+    static ProductResponse toResponse(Product product) {
         return new ProductResponse(product.getId(), product.getName(), product.getPrice());
     }
 }
@@ -124,19 +136,15 @@ public record ProductResponse(Long id, String name, BigDecimal price) {
 ### Global Exception Handler
 ```java
 @RestControllerAdvice
-public class GlobalExceptionHandler {
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> handleValidation(MethodArgumentNotValidException ex) {
-        return ex.getBindingResult().getFieldErrors().stream()
-            .collect(Collectors.toMap(FieldError::getField,
-                    error -> error.getDefaultMessage() != null ? error.getDefaultMessage() : "Invalid"));
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {   // full version: references/web.md
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ProblemDetail handleNotFound(EntityNotFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
-    @ExceptionHandler(EntityNotFoundException.class)
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    public Map<String, String> handleNotFound(EntityNotFoundException ex) {
-        return Map.of("error", ex.getMessage());
+    @ExceptionHandler(ConstraintViolationException.class)   // query/path parameters of the @Validated *Api interfaces
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 }
 ```
@@ -170,7 +178,7 @@ Load detailed patterns based on context:
 
 | Topic | Reference | When to Load |
 |-------|-----------|-------------|
-| Web/REST | `references/web.md` | Controllers, validation, exception handling, Problem Details (RFC 7807), OpenAPI spec (springdoc) |
+| Web/REST | `references/web.md` | Contract-first API (OpenAPI spec + openapi-generator), controllers, validation, exception handling, Problem Details (RFC 7807), Swagger UI (springdoc) |
 | Data Access | `references/data.md` | JPA, repositories, transactions, queries |
 | Security | `references/security.md` | Spring Security 7, OAuth2, JWT, auth |
 | Cloud/Config | `references/cloud.md` | Config server, discovery, resilience, virtual threads, HTTP interfaces, GraalVM native, OTLP tracing |
@@ -240,24 +248,26 @@ src/main/java/com/example/
 
 ## Reactive WebFlux Endpoint
 
+Same contract-first setup with `reactive=true` in the generator's config options: the generated `OrdersApi` methods return `Mono`, take the body as `Mono` and get the `ServerWebExchange`.
+
 ```java
 @RestController
-@RequestMapping("/api/v1/orders")
 @RequiredArgsConstructor
-public class OrderController {
+public class OrderController implements OrdersApi {
     private final OrderService orderService;
 
-    @GetMapping("/{id}")
-    public Mono<ResponseEntity<OrderDto>> getOrder(@PathVariable UUID id) {
+    @Override
+    public Mono<ResponseEntity<OrderResponse>> getOrder(UUID id, ServerWebExchange exchange) {
         return orderService.findById(id)
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono<OrderDto> createOrder(@Valid @RequestBody CreateOrderRequest request) {
-        return orderService.create(request);
+    @Override
+    public Mono<ResponseEntity<OrderResponse>> createOrder(Mono<CreateOrderRequest> request,
+                                                           ServerWebExchange exchange) {
+        return request.flatMap(orderService::create)
+                .map(order -> ResponseEntity.status(HttpStatus.CREATED).body(order));
     }
 }
 ```
@@ -275,8 +285,8 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
-                        // springdoc OpenAPI spec and Swagger UI (references/web.md)
-                        .requestMatchers("/v3/api-docs/**", "/v3/api-docs.yaml", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        // OpenAPI spec file and Swagger UI (springdoc, references/web.md)
+                        .requestMatchers("/openapi.yaml", "/v3/api-docs/swagger-config", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                 .build();

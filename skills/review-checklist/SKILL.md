@@ -23,7 +23,8 @@ Fast, high-confidence checks that need only the changed lines.
 - Anything deeper (Spring Security config, CORS/CSRF, TLS, headers, dependency CVEs): recommend `security-engineer`
 
 ### Conventions
-- Violations of the `conventions` skill: `@Autowired` on fields, DTOs that are not records, `@DynamicPropertySource` instead of `@ServiceConnection`, a pipeline or Compose file generated unprompted
+- Contract-first violations: a hand-written `@RequestMapping`/`@GetMapping` controller instead of implementing a generated `*Api` interface, edited generated code, an endpoint or API DTO missing from `openapi.yaml`, a spec change without the matching controller change, a spec that breaks the "Spec Design Checklist" in `web.md` (unbounded list operation, unbounded strings, one schema for request and response, missing error responses, a breaking change to a published API)
+- Violations of the `conventions` skill: `@Autowired` on fields, non-generated DTOs that are not records, `@DynamicPropertySource` instead of `@ServiceConnection`, a pipeline or Compose file generated unprompted
 - Violations of the Lombok rules in `java-modern`
 - Old-style Java where modern Java fits: `Collectors.toList()` (use `.toList()`), `instanceof` plus cast, `switch` with `break`
 
