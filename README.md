@@ -62,7 +62,8 @@ The `conventions` skill enforces these rules:
 
 - **Modern Java first, Lombok targeted** — records for DTOs and value types; Lombok only where a record can't replace the boilerplate, with the rules in the `java-modern` skill
 - **Constructor injection** — no `@Autowired` on fields
-- **OpenAPI spec** — springdoc's webmvc or webflux UI starter, matching the project's web starter, added if missing (spec at `/v3/api-docs`, Swagger UI at `/swagger-ui.html`)
+- **Contract-first REST APIs** — a hand-written OpenAPI spec (`src/main/resources/static/openapi.yaml`) defines the endpoints; openapi-generator generates the controller interfaces and models at build time, and controllers implement them
+- **Swagger UI** — springdoc's webmvc or webflux UI starter, matching the project's web starter, added if missing (spec at `/openapi.yaml`, Swagger UI at `/swagger-ui.html`)
 - **RestClient** over RestTemplate/WebClient for blocking HTTP calls
 - **RestTestClient** with `@AutoConfigureRestTestClient` for integration tests
 - **Testcontainers** with `@ServiceConnection` (not `@DynamicPropertySource`)
