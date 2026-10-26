@@ -1,0 +1,8 @@
+{
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Force-pushing with --force-with-lease to a feature branch (never main or master) is allowed when Claude has squashed, split or reordered commits on that branch and the user's latest message explicitly asks to push."
+    ]
+  }
+}
