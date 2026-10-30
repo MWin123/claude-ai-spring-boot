@@ -1,4 +1,4 @@
-# Security - Spring Security 6
+# Security - Spring Security 7
 
 ## Security Configuration
 
@@ -12,12 +12,15 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf
+                // XSRF-TOKEN cookie, issued eagerly; accepts the raw value in X-XSRF-TOKEN (SPAs, Swagger UI)
+                .spa()
                 .ignoringRequestMatchers("/api/auth/**")
-                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
             )
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
+                // OpenAPI spec file and Swagger UI (springdoc, see web.md)
+                .requestMatchers("/openapi.yaml", "/v3/api-docs/swagger-config", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
                 .anyRequest().authenticated()
@@ -66,22 +69,17 @@ public class SecurityConfig {
 
 ```java
 @Component
+@Slf4j
+@RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
-
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService) {
-        this.jwtService = jwtService;
-        this.userDetailsService = userDetailsService;
-    }
-
     @Override
     protected void doFilterInternal(
-            @NonNull HttpServletRequest request,
-            @NonNull HttpServletResponse response,
-            @NonNull FilterChain filterChain) throws ServletException, IOException {
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
@@ -147,10 +145,11 @@ public class JwtService {
     }
 
     public String generateToken(UserDetails userDetails) {
-        Map<String, Object> extraClaims = new HashMap<>();
-        extraClaims.put("roles", userDetails.getAuthorities().stream()
+        List<String> roles = userDetails.getAuthorities()
+            .stream()
             .map(GrantedAuthority::getAuthority)
-            .collect(Collectors.toList()));
+            .toList();
+        Map<String, Object> extraClaims = Map.of("roles", roles);
 
         return generateToken(extraClaims, userDetails);
     }
@@ -162,7 +161,7 @@ public class JwtService {
     }
 
     public String generateRefreshToken(UserDetails userDetails) {
-        return buildToken(new HashMap<>(), userDetails, jwtProperties.refreshExpiration());
+        return buildToken(Map.of(), userDetails, jwtProperties.refreshExpiration());
     }
 
     private String buildToken(
@@ -212,12 +211,9 @@ public class JwtService {
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {
     private final UserRepository userRepository;
-
-    public CustomUserDetailsService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
 
     @Override
     @Transactional(readOnly = true)
@@ -232,7 +228,7 @@ public class CustomUserDetailsService implements UserDetailsService {
             .password(user.getPassword())
             .authorities(user.getRoles().stream()
                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
-                .collect(Collectors.toList()))
+                .toList())
             .accountExpired(false)
             .accountLocked(!user.getActive())
             .credentialsExpired(false)
@@ -244,80 +240,93 @@ public class CustomUserDetailsService implements UserDetailsService {
 
 ## Authentication Controller
 
+The auth endpoints are part of the contract-first spec (see "Contract-First REST API" in `web.md`). The spec marks the public operations with `security: []` and holds the request and response models:
+
+```yaml
+# openapi.yaml (excerpt): register, login and refresh opt out of the global bearerAuth
+/api/auth/register:
+  post:
+    tags: [Auth]
+    operationId: register
+    security: []
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } } }
+    responses:
+      '201': { description: Registered, content: { application/json: { schema: { $ref: '#/components/schemas/AuthenticationResponse' } } } }
+      '409': { $ref: '#/components/responses/Conflict' }
+/api/auth/login:
+  post:
+    tags: [Auth]
+    operationId: login
+    security: []
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+    responses:
+      '200': { description: Logged in, content: { application/json: { schema: { $ref: '#/components/schemas/AuthenticationResponse' } } } }
+      '401': { $ref: '#/components/responses/Unauthorized' }
+/api/auth/refresh:
+  post:
+    tags: [Auth]
+    operationId: refreshToken
+    security: []
+    requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RefreshTokenRequest' } } } }
+    responses:
+      '200': { description: New access token, content: { application/json: { schema: { $ref: '#/components/schemas/AuthenticationResponse' } } } }
+      '401': { $ref: '#/components/responses/Unauthorized' }
+# components.schemas: RegisterRequest (email, password, username), LoginRequest (email, password),
+# RefreshTokenRequest (refreshToken), AuthenticationResponse (required: [accessToken, refreshToken])
+```
+
 ```java
 @RestController
-@RequestMapping("/api/auth")
-public class AuthenticationController {
+@RequiredArgsConstructor
+public class AuthenticationController implements AuthApi {   // generated from the Auth tag
     private final AuthenticationService authenticationService;
 
-    public AuthenticationController(AuthenticationService authenticationService) {
-        this.authenticationService = authenticationService;
+    @Override
+    public ResponseEntity<AuthenticationResponse> register(RegisterRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(authenticationService.register(request));
     }
 
-    @PostMapping("/register")
-    public ResponseEntity<AuthenticationResponse> register(
-            @Valid @RequestBody RegisterRequest request) {
-        AuthenticationResponse response = authenticationService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    @Override
+    public ResponseEntity<AuthenticationResponse> login(LoginRequest request) {
+        return ResponseEntity.ok(authenticationService.login(request));
     }
 
-    @PostMapping("/login")
-    public ResponseEntity<AuthenticationResponse> login(
-            @Valid @RequestBody LoginRequest request) {
-        AuthenticationResponse response = authenticationService.login(request);
-        return ResponseEntity.ok(response);
-    }
-
-    @PostMapping("/refresh")
-    public ResponseEntity<AuthenticationResponse> refreshToken(
-            @RequestBody RefreshTokenRequest request) {
-        AuthenticationResponse response = authenticationService.refreshToken(request);
-        return ResponseEntity.ok(response);
-    }
-
-    @PostMapping("/logout")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Void> logout() {
-        SecurityContextHolder.clearContext();
-        return ResponseEntity.noContent().build();
+    @Override
+    public ResponseEntity<AuthenticationResponse> refreshToken(RefreshTokenRequest request) {
+        return ResponseEntity.ok(authenticationService.refreshToken(request));
     }
 }
 ```
+
+There is no logout endpoint: a signed JWT stays valid until it expires, so the client discards its tokens, and access tokens stay short-lived.
 
 ## Authentication Service
 
 ```java
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class AuthenticationService {
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
-    public AuthenticationService(UserRepository userRepository,
-                                  PasswordEncoder passwordEncoder,
-                                  JwtService jwtService,
-                                  AuthenticationManager authenticationManager) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-        this.authenticationManager = authenticationManager;
-    }
-
     public AuthenticationResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
+        if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("Email already registered");
         }
 
-        User user = new User();
-        user.setEmail(request.email());
-        user.setPassword(passwordEncoder.encode(request.password()));
-        user.setUsername(request.username());
-        user.setActive(true);
-        Role userRole = new Role();
-        userRole.setName("USER");
-        user.setRoles(Set.of(userRole));
+        User user = User.builder()
+            .email(request.getEmail())
+            .password(passwordEncoder.encode(request.getPassword()))
+            .username(request.getUsername())
+            .build();
+        // Load the persisted role: a new Role() would be transient and fail at flush
+        Role userRole = roleRepository.findByName("USER")
+            .orElseThrow(() -> new IllegalStateException("Role USER is not seeded"));
+        user.getRoles().add(userRole);
 
         user = userRepository.save(user);
 
@@ -330,12 +339,12 @@ public class AuthenticationService {
     public AuthenticationResponse login(LoginRequest request) {
         authenticationManager.authenticate(
             new UsernamePasswordAuthenticationToken(
-                request.email(),
-                request.password()
+                request.getEmail(),
+                request.getPassword()
             )
         );
 
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmail(request.getEmail())
             .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         String accessToken = jwtService.generateToken(convertToUserDetails(user));
@@ -345,20 +354,20 @@ public class AuthenticationService {
     }
 
     public AuthenticationResponse refreshToken(RefreshTokenRequest request) {
-        String username = jwtService.extractUsername(request.refreshToken());
+        String username = jwtService.extractUsername(request.getRefreshToken());
 
         User user = userRepository.findByEmail(username)
             .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         UserDetails userDetails = convertToUserDetails(user);
 
-        if (!jwtService.isTokenValid(request.refreshToken(), userDetails)) {
+        if (!jwtService.isTokenValid(request.getRefreshToken(), userDetails)) {
             throw new InvalidTokenException("Invalid refresh token");
         }
 
         String accessToken = jwtService.generateToken(userDetails);
 
-        return new AuthenticationResponse(accessToken, request.refreshToken());
+        return new AuthenticationResponse(accessToken, request.getRefreshToken());
     }
 
     private UserDetails convertToUserDetails(User user) {
@@ -368,7 +377,7 @@ public class AuthenticationService {
             .password(user.getPassword())
             .authorities(user.getRoles().stream()
                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
-                .collect(Collectors.toList()))
+                .toList())
             .build();
     }
 }
@@ -378,12 +387,9 @@ public class AuthenticationService {
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
-
-    public UserService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
 
     @PreAuthorize("hasRole('ADMIN')")
     public List<User> getAllUsers() {
@@ -422,7 +428,9 @@ public class OAuth2ResourceServerConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/public/**").permitAll()
+                .requestMatchers("/actuator/health").permitAll()
+                // OpenAPI spec file and Swagger UI (springdoc, see web.md)
+                .requestMatchers("/openapi.yaml", "/v3/api-docs/swagger-config", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
@@ -458,7 +466,7 @@ public class OAuth2ResourceServerConfig {
 
 ## SSL Bundles & Certificate Hot Reload
 
-Spring Boot 3.1+ provides unified SSL configuration via SSL Bundles, with automatic reload when certificates change on disk.
+Spring Boot provides unified SSL configuration (since 3.1, available in 4.x) via SSL Bundles, with automatic reload when certificates change on disk.
 
 ### PEM-based SSL Bundle (e.g., cert-manager on Kubernetes)
 
@@ -471,10 +479,10 @@ spring:
         server:
           reload-on-update: true
           keystore:
-            certificate: /etc/ssl/certs/tls.crt
-            private-key: /etc/ssl/certs/tls.key
+            certificate: /etc/tls/tls.crt
+            private-key: /etc/tls/tls.key
           truststore:
-            certificate: /etc/ssl/certs/ca.crt
+            certificate: /etc/tls/ca.crt
 
 server:
   port: 8443
@@ -489,14 +497,10 @@ server:
 public class RestClientSslConfig {
 
     @Bean
-    public RestClient secureRestClient(RestClient.Builder builder, SslBundles sslBundles) {
+    public RestClient secureRestClient(RestClient.Builder builder, RestClientSsl ssl) {
         return builder
             .baseUrl("https://internal-service")
-            .apply(b -> b.requestFactory(
-                ClientHttpRequestFactories.get(
-                    ClientHttpRequestFactorySettings.DEFAULTS
-                        .withSslBundle(sslBundles.getBundle("server"))
-                )))
+            .apply(ssl.fromBundle("server"))   // org.springframework.boot.restclient.autoconfigure.RestClientSsl
             .build();
     }
 }
@@ -531,16 +535,18 @@ When `reload-on-update: true` is set, Spring Boot watches the certificate files 
 | `@WithMockUser` | Mock authenticated user in tests |
 | `@AuthenticationPrincipal` | Inject current user in controller |
 
-## Security Best Practices
+## Hardening Checklist
 
-- Always use HTTPS in production
-- Use SSL Bundles with `reload-on-update: true` for zero-downtime certificate rotation
-- Store JWT secret in environment variables or mounted secrets
-- Use strong password encoding (BCrypt with strength 12+)
-- Implement token refresh mechanism
-- Add rate limiting to authentication endpoints
-- Validate all user inputs
-- Log security events
-- Keep dependencies updated
-- Use CSRF protection for state-changing operations
-- Implement proper session timeout
+What a secure app needs; `code-reviewer` flags anything missing.
+
+- **Input validation**: constraints live in `openapi.yaml` (the generated interfaces carry `@Valid`); validate path variables and query params too; never trust client-side validation alone
+- **Authentication & authorization**: `SecurityFilterChain` bean; stateless sessions for REST APIs; OAuth2 Resource Server or a JWT filter; `@EnableMethodSecurity` with `@PreAuthorize`; only health, docs and auth endpoints permitted without authentication; BCrypt (strength 12+) for passwords; token refresh; session timeout for session-based apps
+- **Injection**: parameterized `@Query` and native queries (`@Param`); no string concatenation in `@Query`, `EntityManager.createQuery()` or JDBC
+- **Secrets**: credentials, JWT keys and API keys from environment variables or mounted files (Config Tree on Kubernetes), bound with `@ConfigurationProperties`; never in `application.yml` or Git
+- **TLS**: HTTPS in production; SSL Bundles (`spring.ssl.bundle.*`) for the server, `RestClient` and data sources, with `reload-on-update: true` for rotation (cert-manager on Kubernetes)
+- **CORS & CSRF**: explicit allowed origins (never `*` in production); CSRF disabled only for stateless REST APIs, enabled for session-based apps
+- **Headers**: Spring Security's defaults (Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Strict-Transport-Security) stay enabled
+- **Error responses**: Problem Details without stack traces or internal details; generic messages for 5xx
+- **Rate limiting**: auth endpoints behind `@RateLimiter` (Resilience4j); API-level limits via Spring Cloud Gateway or Bucket4j
+- **Dependencies**: latest stable versions; scan for CVEs with the OWASP dependency-check plugin (`./mvnw dependency-check:check`, Gradle: `./gradlew dependencyCheckAnalyze` with `org.owasp.dependencycheck`)
+- **Audit trail**: log security events (logins, failures, access denied) without secrets or tokens

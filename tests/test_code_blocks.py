@@ -1,0 +1,104 @@
+"""Code examples parse and don't bring back patterns the skills tell Claude to avoid."""
+import json
+import re
+
+import pytest
+import yaml
+
+from helpers import CLAUDE_FILES, code_blocks, rel
+
+# Recommended code must not contain these.
+BANNED = {
+    r"@MockBean\b": "removed in Boot 4, use @MockitoBean",
+    r"@SpyBean\b": "removed in Boot 4, use @MockitoSpyBean",
+    r"com\.fasterxml\.jackson\.databind": "Jackson 2, Boot 4 uses tools.jackson.databind",
+    r"spring-boot-starter-web\b(?!mvc|flux|services|socket)": "use spring-boot-starter-webmvc",
+    r"\bjavax\.(?:persistence|validation|servlet|annotation)\b": "use jakarta.*",
+    r"new RestTemplate\b|\bRestTemplateBuilder\b": "use RestClient",
+    r"@DynamicPropertySource\b": "use @ServiceConnection",
+    r"/v3/api-docs\.yaml": "Swagger UI loads the hand-written /openapi.yaml",
+    r"@ExceptionHandler\(Exception\.class\)": "catch-all turns Spring Security's 403 into a 500",
+    r"@(?:Request|Get|Post|Put|Delete|Patch)Mapping\b": "contract-first: mappings come from the generated *Api interface",
+}
+# Boot 4 API versioning on hand-written mappings (migrated projects), not application code
+CONTRACT_FIRST_EXEMPT = {"skills/spring-boot/references/boot4.md"}
+MAPPING = next(p for p in BANNED if "Mapping" in p)
+
+
+def without_comments(line):
+    """Drop // and # comments (they often say "not X"), keeping URLs like https://."""
+    return re.split(r"(?:^|\s)(?://|#|<!--)", line, maxsplit=1)[0]
+
+
+def blocks(langs):
+    return [
+        pytest.param(path, block, id=f"{rel(path)}:{block.line}")
+        for path in CLAUDE_FILES
+        for block in code_blocks(path.read_text())
+        if block.lang in langs
+    ]
+
+
+@pytest.mark.parametrize("path,block", [p for p in blocks({"yaml", "yml"}) if "{{" not in p.values[1].body])
+def test_yaml_blocks_parse(path, block):  # Helm templates ({{ }}) are not YAML until rendered
+    list(yaml.safe_load_all(block.body))
+
+
+@pytest.mark.parametrize("path,block", blocks({"json"}))
+def test_json_blocks_parse(path, block):
+    json.loads(block.body)
+
+
+@pytest.mark.parametrize("path,block", [p for p in blocks({"yaml"}) if "\nopenapi: " in "\n" + p.values[1].body])
+def test_openapi_local_refs_resolve(path, block):
+    spec = yaml.safe_load(block.body)
+    missing = []
+    for ref in re.findall(r"\$ref: '#/([^']+)'", block.body):
+        node = spec
+        for key in ref.split("/"):
+            node = node.get(key) if isinstance(node, dict) else None
+        if node is None:
+            missing.append(ref)
+    assert not missing, f"unresolved $refs: {missing}"
+
+
+@pytest.mark.parametrize("path", CLAUDE_FILES, ids=rel)
+def test_no_banned_patterns_in_code(path):
+    found = []
+    for block in code_blocks(path.read_text()):
+        for offset, line in enumerate(block.body.splitlines()):
+            code = without_comments(line)
+            for pattern, reason in BANNED.items():
+                if pattern == MAPPING and rel(path) in CONTRACT_FIRST_EXEMPT:
+                    continue
+                if re.search(pattern, code):
+                    found.append(f"line {block.line + offset}: {line.strip()} ({reason})")
+    assert not found, "\n".join(found)
+
+
+@pytest.mark.parametrize("path", [p for p in CLAUDE_FILES if rel(p) not in CONTRACT_FIRST_EXEMPT], ids=rel)
+def test_controllers_implement_generated_interfaces(path):
+    """Contract-first: every @RestController example implements a generated *Api interface."""
+    handwritten = []
+    for block in code_blocks(path.read_text()):
+        lines = block.body.splitlines()
+        for n, line in enumerate(lines):
+            if re.match(r"\s*@RestController\b", without_comments(line)):
+                declaration = next((l for l in lines[n:] if re.search(r"\bclass\s+\w+", l)), "")
+                if not re.search(r"\bimplements\b.*\b\w+Api\b", declaration):
+                    handwritten.append(f"line {block.line + n}: {declaration.strip()}")
+    assert not handwritten, "\n".join(handwritten)
+
+
+@pytest.mark.parametrize("path", CLAUDE_FILES, ids=rel)
+def test_exception_handlers_return_problem_details(path):
+    """Errors are Problem Details: every @ExceptionHandler method returns ProblemDetail."""
+    wrong = []
+    for block in code_blocks(path.read_text()):
+        lines = block.body.splitlines()
+        for n, line in enumerate(lines):
+            if re.match(r"\s*@ExceptionHandler\b", line):
+                method = next((l for l in lines[n:] if re.match(r"\s*(public|protected)\s+\S", l)), "")
+                if not re.match(r"\s*(public|protected)\s+ProblemDetail\s", method):
+                    wrong.append(f"line {block.line + n}: {method.strip()}")
+    assert not wrong, "\n".join(wrong)

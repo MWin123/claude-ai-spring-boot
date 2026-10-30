@@ -1,25 +1,12 @@
 ---
 name: code-quality
-description: Comprehensive code review for Java - clean code principles, API contracts, null safety, exception handling, and performance. Use when user says "review code", "refactor", "check API", or before merging changes.
+description: Clean code for Java and Spring Boot - DRY, KISS, YAGNI, null safety, exception handling, resource management, transaction boundaries, naming and performance pitfalls, with bad and good examples. Use when writing or refactoring code; reviews go to the code-reviewer or quick-reviewer agent.
+when_to_use: '"refactor", "clean this code", "improve readability", "simplify this"; fixing the findings of a review.'
 ---
 
-# Code Quality Review Skill
+# Code Quality Skill
 
-Systematic code review combining clean code principles, API design, and Java best practices.
-
-## When to Use
-- "review this code" / "code review" / "check this PR"
-- "refactor" / "clean this code" / "improve readability"
-- "review API" / "check endpoints" / "REST review"
-- Before merging PR or releasing API changes
-
-## Review Strategy
-
-1. **Quick scan** - Understand intent, identify scope
-2. **Checklist pass** - Apply relevant categories below
-3. **Summary** - List findings by severity (Critical → Minor → Good)
-
----
+Clean code principles and Java pitfalls to apply while writing or refactoring. What a review flags is in the `review-checklist` skill, which the `code-reviewer` and `quick-reviewer` agents load.
 
 ## Clean Code Principles
 
@@ -27,31 +14,32 @@ Systematic code review combining clean code principles, API design, and Java bes
 
 **Violation:**
 ```java
-// ❌ Duplicated validation logic
-public void createUser(UserRequest req) {
-    if (req.getEmail() == null || !req.getEmail().contains("@")) {
-        throw new ValidationException("Invalid email");
-    }
+// ❌ The same discount rule in two places
+public BigDecimal orderTotal(Order order) {
+    BigDecimal total = order.subtotal();
+    return total.compareTo(new BigDecimal("100")) > 0 ? total.multiply(new BigDecimal("0.9")) : total;
 }
 
-public void updateUser(UserRequest req) {
-    if (req.getEmail() == null || !req.getEmail().contains("@")) {
-        throw new ValidationException("Invalid email");
-    }
+public BigDecimal quoteTotal(Quote quote) {
+    BigDecimal total = quote.subtotal();
+    return total.compareTo(new BigDecimal("100")) > 0 ? total.multiply(new BigDecimal("0.9")) : total;
 }
 ```
 
 **Fix:**
 ```java
 // ✅ Single source of truth
-public class EmailValidator {
-    public void validate(String email) {
-        if (email == null || !email.contains("@")) {
-            throw new ValidationException("Invalid email");
-        }
+final class Discounts {
+    private static final BigDecimal THRESHOLD = new BigDecimal("100");
+    private static final BigDecimal RATE = new BigDecimal("0.9");
+
+    static BigDecimal apply(BigDecimal total) {
+        return total.compareTo(THRESHOLD) > 0 ? total.multiply(RATE) : total;
     }
 }
 ```
+
+Input validation is not a DRY case for Java code: it lives once, in the OpenAPI spec (`conventions` skill).
 
 ### KISS - Keep It Simple
 
@@ -86,82 +74,11 @@ public class ConfigurableUserServiceFactoryProvider { }
 public class UserService { }
 ```
 
----
+## API Design
 
-## API Contract Review
+The REST contract is the OpenAPI spec: HTTP verbs, status codes, versioning, pagination and separate request/response schemas follow the "Spec Design Checklist" in `web.md` of the `spring-boot` skill. Controllers only implement the generated interfaces, and entities never leave the service layer.
 
-### HTTP Verb Semantics
-
-| Verb | Use For | Idempotent | Safe |
-|------|---------|------------|------|
-| GET | Retrieve resource | Yes | Yes |
-| POST | Create new resource | No | No |
-| PUT | Replace entire resource | Yes | No |
-| PATCH | Partial update | No* | No |
-| DELETE | Remove resource | Yes | No |
-
-**Common Mistakes:**
-```java
-// ❌ POST for retrieval
-@PostMapping("/users/search")
-public List<User> search(@RequestBody SearchCriteria criteria) { }
-
-// ✅ GET with query params
-@GetMapping("/users")
-public List<User> search(@RequestParam String name) { }
-
-// ❌ GET for state change
-@GetMapping("/users/{id}/activate")
-public void activate(@PathVariable Long id) { }
-
-// ✅ POST/PATCH for state change
-@PostMapping("/users/{id}/activate")
-public ResponseEntity<Void> activate(@PathVariable Long id) { }
-```
-
-### API Versioning
-
-```java
-// ✅ URL path versioning (recommended)
-@RestController
-@RequestMapping("/api/v1/users")
-public class UserControllerV1 { }
-
-// ❌ No versioning
-@RequestMapping("/users")  // Breaking changes affect all clients
-```
-
-### Response Status Codes
-
-| Code | Use Case | Example |
-|------|----------|---------|
-| 200 OK | Successful GET/PUT/PATCH | Found resource |
-| 201 Created | Successful POST | New resource created |
-| 204 No Content | Successful DELETE | Resource deleted |
-| 400 Bad Request | Validation failure | Invalid input |
-| 404 Not Found | Resource doesn't exist | User not found |
-| 409 Conflict | State conflict | Duplicate email |
-| 500 Server Error | Unexpected error | Database down |
-
-### DTO vs Entity Exposure
-
-```java
-// ❌ Exposing JPA entity
-@GetMapping("/{id}")
-public User getUser(@PathVariable Long id) {
-    return userRepository.findById(id).get();  // Exposes internals, N+1 risk
-}
-
-// ✅ Use DTO
-@GetMapping("/{id}")
-public UserResponse getUser(@PathVariable Long id) {
-    return userService.findById(id);  // Returns DTO
-}
-```
-
----
-
-## Java Code Review Checklist
+## Java Pitfalls
 
 ### Null Safety
 
@@ -184,7 +101,7 @@ return user.getName().toUpperCase();
 - Chained calls without null checks
 - `Optional.get()` without `isPresent()`
 - Returning `null` instead of `Optional` or empty collection
-- Missing `@Nullable`/`@NonNull` on public APIs
+- Missing JSpecify nullability on public APIs: `@NullMarked` on packages, `org.jspecify.annotations.Nullable` where null is allowed
 
 ### Exception Handling
 
@@ -286,55 +203,3 @@ List<User> allUsers = userRepository.findAll();  // Could be millions
 // ✅ Pagination
 Page<User> users = userRepository.findAll(PageRequest.of(0, 20));
 ```
-
----
-
-## Review Output Format
-
-```markdown
-## Code Review: [Component/Feature Name]
-
-### Critical Issues
-- **Null safety violation** (UserService.java:42) - `user.getName().toUpperCase()` can NPE. Use Optional or null check.
-- **Resource leak** (FileHandler.java:15) - FileInputStream not closed. Use try-with-resources.
-
-### Important Improvements
-- **API design** - POST used for idempotent update (UserController.java:28). Use PUT instead.
-- **Transaction missing** - Multi-step operation needs @Transactional (OrderService.java:56).
-- **N+1 query** - Loop fetches orders individually (line 89). Use JOIN FETCH.
-
-### Code Smells
-- **Long method** - extractUserData() is 80 lines. Consider extracting sub-methods.
-- **Magic number** - Use named constant instead of `86400` (line 123).
-- **Inconsistent naming** - Mix of camelCase and snake_case in variables.
-
-### Good Practices Observed
-- ✅ Constructor injection used throughout
-- ✅ DTOs properly separate from entities
-- ✅ Comprehensive validation on all endpoints
-- ✅ Good test coverage (87%)
-```
-
----
-
-## Quick Reference Flags
-
-| Category | Red Flags |
-|----------|-----------|
-| **Null Safety** | Chained calls, Optional.get(), returning null |
-| **Exceptions** | Empty catch, broad catch, lost stack trace |
-| **Resources** | Manual close(), missing try-with-resources |
-| **API Design** | Wrong HTTP verb, no versioning, entity exposure |
-| **Transactions** | Multi-step writes without @Transactional |
-| **Performance** | N+1 queries, loading all data, missing indexes |
-| **Clean Code** | Code duplication, magic numbers, unclear names |
-| **No Lombok** | Any `@Data`, `@Getter`, `@Setter`, `@Builder`, `@Slf4j`, `@RequiredArgsConstructor` — use explicit code |
-
----
-
-## Severity Levels
-
-- **Critical** - Security, data loss, crash risk → Must fix before merge
-- **Important** - Performance, maintainability, correctness → Should fix
-- **Code Smell** - Style, complexity, minor issues → Nice to have
-- **Good** - Positive feedback to reinforce good practices
