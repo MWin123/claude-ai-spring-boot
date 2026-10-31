@@ -199,7 +199,18 @@ spec:
 
 This Ingress routes only `/api/users`. If the service exposes its OpenAPI spec and Swagger UI (springdoc), serve them under that prefix (`/api/users/openapi.yaml`, `/api/users/swagger-ui.html`) so this rule covers them; see "Behind a Kubernetes Ingress" in `web.md`.
 
-cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see `security.md` in the `spring-boot` skill).
+cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see `security.md` in the `spring-boot` skill). That moves the app to HTTPS on 8443, so keep Actuator on plain HTTP 8080 for the probes, the Prometheus annotation and the Dockerfile `HEALTHCHECK`:
+
+```yaml
+# application.yml, next to the SSL bundle
+management:
+  server:
+    port: 8080      # the probes and prometheus.io/port stay on 8080; the Service doesn't route it
+    ssl:
+      enabled: false
+```
+
+Then add `containerPort: 8443` to the Deployment and set the Service's `targetPort: 8443`. In the Helm chart, `service.targetPort` becomes 8443, so the probes and the Prometheus annotation need their own management port value instead of `http`.
 
 ## Certificate for mTLS between services
 

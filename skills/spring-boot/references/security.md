@@ -21,7 +21,8 @@ public class SecurityConfig {
             )
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
+                // Kubernetes probes (/actuator/health/liveness, /readiness) and the Prometheus scrape send no token
+                .requestMatchers("/api/auth/**", "/actuator/health/**", "/actuator/prometheus").permitAll()
                 // OpenAPI spec file and Swagger UI (springdoc, see web.md)
                 .requestMatchers("/openapi.yaml", "/v3/api-docs/swagger-config", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
@@ -461,7 +462,7 @@ When `reload-on-update: true` is set, Spring Boot watches the certificate files 
 What a secure app needs; `code-reviewer` flags anything missing.
 
 - **Input validation**: constraints live in `openapi.yaml` (the generated interfaces carry `@Valid`); validate path variables and query params too; never trust client-side validation alone
-- **Authentication & authorization**: `SecurityFilterChain` bean; stateless sessions for REST APIs; OAuth2 Resource Server for bearer tokens (no hand-written JWT filter), with refresh tokens rejected by the API (`token_type`); `@EnableMethodSecurity` with `@PreAuthorize`; only health, docs and auth endpoints permitted without authentication; BCrypt (strength 12+) for passwords; token refresh; session timeout for session-based apps
+- **Authentication & authorization**: `SecurityFilterChain` bean; stateless sessions for REST APIs; OAuth2 Resource Server for bearer tokens (no hand-written JWT filter), with refresh tokens rejected by the API (`token_type`); `@EnableMethodSecurity` with `@PreAuthorize`; only health (with the probe groups), the Prometheus scrape, docs and auth endpoints permitted without authentication; BCrypt (strength 12+) for passwords; token refresh; session timeout for session-based apps
 - **Injection**: parameterized `@Query` and native queries (`@Param`); no string concatenation in `@Query`, `EntityManager.createQuery()` or JDBC
 - **Secrets**: credentials, JWT keys and API keys from environment variables or mounted files (Config Tree on Kubernetes), bound with `@ConfigurationProperties`; never in `application.yml` or Git
 - **TLS**: HTTPS in production; SSL Bundles (`spring.ssl.bundle.*`) for the server, `RestClient` and data sources, with `reload-on-update: true` for rotation (cert-manager on Kubernetes)
