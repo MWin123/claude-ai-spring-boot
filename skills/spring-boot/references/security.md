@@ -468,6 +468,6 @@ What a secure app needs; `code-reviewer` flags anything missing.
 - **CORS & CSRF**: explicit allowed origins (never `*` in production); CSRF disabled only for stateless REST APIs, enabled for session-based apps
 - **Headers**: Spring Security's defaults (Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, Strict-Transport-Security) stay enabled
 - **Error responses**: Problem Details without stack traces or internal details; generic messages for 5xx
-- **Rate limiting**: auth endpoints behind `@RateLimiter` (Resilience4j); API-level limits via Spring Cloud Gateway or Bucket4j
+- **Rate limiting**: auth endpoints and API-level limits via Spring Cloud Gateway's `RequestRateLimiter` (`cloud.md`) or Bucket4j
 - **Dependencies**: latest stable versions; scan for CVEs with the OWASP dependency-check plugin (`./mvnw dependency-check:check`, Gradle: `./gradlew dependencyCheckAnalyze` with `org.owasp.dependencycheck`)
 - **Audit trail**: log security events (logins, failures, access denied) without secrets or tokens

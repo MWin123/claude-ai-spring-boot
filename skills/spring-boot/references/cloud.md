@@ -1,18 +1,42 @@
 # Cloud Native - Spring Cloud
 
+## Setup
+
+Spring Cloud starters take their versions from the `spring-cloud-dependencies` BOM, whose release train must match the Boot version: 2025.1.x for Boot 4.0 and 4.1. Initializr adds it with the first Spring Cloud starter.
+
+```xml
+<properties>
+    <spring-cloud.version>2025.1.4</spring-cloud.version>
+</properties>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-dependencies</artifactId>
+            <version>${spring-cloud.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
+Gradle: `implementation(platform("org.springframework.cloud:spring-cloud-dependencies:2025.1.4"))`.
+
 ## Spring Cloud Config Server
 
 ```java
-// Config Server
 @SpringBootApplication
-@EnableConfigServer
+@EnableConfigServer   // spring-cloud-config-server
 public class ConfigServerApplication {
     public static void main(String[] args) {
         SpringApplication.run(ConfigServerApplication.class, args);
     }
 }
+```
 
-// application.yml
+```yaml
+# application.yml (Config Server)
 server:
   port: 8888
 
@@ -27,16 +51,10 @@ spring:
           # credentials: configure via environment variables
         native:
           search-locations: classpath:/config
+```
 
-// Config Client
-@SpringBootApplication
-public class ClientApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(ClientApplication.class, args);
-    }
-}
-
-// application.yml (Config Client)
+```yaml
+# application.yml (Config Client, spring-cloud-starter-config)
 spring:
   application:
     name: user-service
@@ -54,27 +72,22 @@ spring:
 ## Dynamic Configuration Refresh
 
 ```java
-@Component
-@RefreshScope   // recreated with the new values on the next call after a refresh
-public class FeatureFlags {
-    @Value("${app.feature.enabled:false}")
-    private boolean featureEnabled;
-
-    @Value("${app.max-connections:100}")
-    private int maxConnections;
-
-    public boolean featureEnabled() { return featureEnabled; }
-    public int maxConnections() { return maxConnections; }
+@ConfigurationProperties("app.feature")   // registered by @ConfigurationPropertiesScan
+@Getter
+@Setter   // a refresh re-binds through the setters; a record keeps its startup values
+public class FeatureProperties {
+    private boolean enabled;
+    private int maxConnections = 100;
 }
 
-// Inject FeatureFlags into services; refresh via the Actuator endpoint:
-// POST /actuator/refresh
+// Inject FeatureProperties into services. POST /actuator/refresh (add refresh to
+// management.endpoints.web.exposure.include) re-binds it with the new values; no @RefreshScope needed
 ```
 
 ## Service Discovery - Eureka
 
 ```java
-// Eureka Server
+// Eureka Server (spring-cloud-starter-netflix-eureka-server)
 @SpringBootApplication
 @EnableEurekaServer
 public class EurekaServerApplication {
@@ -83,7 +96,18 @@ public class EurekaServerApplication {
     }
 }
 
-// application.yml (Eureka Server)
+// Eureka Client (spring-cloud-starter-netflix-eureka-client)
+@SpringBootApplication
+@EnableDiscoveryClient
+public class UserServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(UserServiceApplication.class, args);
+    }
+}
+```
+
+```yaml
+# application.yml (Eureka Server)
 server:
   port: 8761
 
@@ -95,17 +119,10 @@ eureka:
     fetch-registry: false
     service-url:
       defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+```
 
-// Eureka Client
-@SpringBootApplication
-@EnableDiscoveryClient
-public class UserServiceApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(UserServiceApplication.class, args);
-    }
-}
-
-// application.yml (Eureka Client)
+```yaml
+# application.yml (Eureka Client)
 spring:
   application:
     name: user-service
@@ -122,6 +139,8 @@ eureka:
 ```
 
 ## Spring Cloud Gateway
+
+`spring-cloud-starter-gateway-server-webflux`; the `circuitBreaker` filter needs `spring-cloud-starter-circuitbreaker-reactor-resilience4j`, `RedisRateLimiter` needs `spring-boot-starter-data-redis-reactive`.
 
 ```java
 @SpringBootApplication
@@ -175,88 +194,98 @@ public class GatewayApplication {
         ).defaultIfEmpty("anonymous");
     }
 }
+```
 
-// application.yml (Gateway)
+```yaml
+# application.yml (Gateway)
 spring:
   cloud:
     gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Origin
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowed-origins: "*"
-            allowed-methods:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-            allowed-headers: "*"
+      server:
+        webflux:
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Origin
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowed-origins: ${CORS_ALLOWED_ORIGINS}   # e.g. https://app.example.com; never "*"
+                allowed-methods: [GET, POST, PUT, DELETE]
+                allowed-headers: "*"
 ```
 
-## Circuit Breaker - Resilience4j
+## Circuit Breaker - Spring Cloud CircuitBreaker
+
+`spring-cloud-starter-circuitbreaker-resilience4j` (Initializr: "Resilience4J"). Resilience4j's own annotations (`@CircuitBreaker(name = …)`, `@Retry`, `@RateLimiter`) need `resilience4j-spring-boot3`, which refuses to start on Boot 4.
 
 ```java
 @Service
 @Slf4j
 public class ExternalApiService {
     private final RestClient restClient;
+    private final CircuitBreaker circuitBreaker;   // org.springframework.cloud.client.circuitbreaker
 
-    public ExternalApiService(RestClient.Builder builder) {
-        this.restClient = builder
-            .baseUrl("https://api.external.com")
-            .build();
+    public ExternalApiService(RestClient.Builder builder, CircuitBreakerFactory<?, ?> circuitBreakers) {
+        this.restClient = builder.baseUrl("https://api.external.com").build();
+        this.circuitBreaker = circuitBreakers.create("externalApi");   // settings: resilience4j.*.instances.externalApi
     }
 
-    @CircuitBreaker(name = "externalApi", fallbackMethod = "getFallbackData")
-    @Retry(name = "externalApi")
-    @RateLimiter(name = "externalApi")
     public ExternalData getData(String id) {
-        return restClient
-            .get()
-            .uri("/data/{id}", id)
-            .retrieve()
-            .body(ExternalData.class);
-    }
-
-    private ExternalData getFallbackData(String id, Exception e) {
-        log.warn("Fallback triggered for id: {}, error: {}", id, e.getMessage());
-        return new ExternalData(id, "Fallback data", LocalDateTime.now());
+        return circuitBreaker.run(
+            () -> restClient.get().uri("/data/{id}", id).retrieve().body(ExternalData.class),
+            e -> {   // failed call, timeout or open circuit
+                log.warn("Fallback triggered for id: {}, error: {}", id, e.getMessage());
+                return new ExternalData(id, "Fallback data", LocalDateTime.now());
+            });
     }
 }
+```
 
-// application.yml
+```yaml
+# application.yml
 resilience4j:
   circuitbreaker:
     instances:
       externalApi:
-        register-health-indicator: true
         sliding-window-size: 10
         minimum-number-of-calls: 5
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
         wait-duration-in-open-state: 5s
         failure-rate-threshold: 50
-        event-consumer-buffer-size: 10
-
-  retry:
+  timelimiter:
     instances:
       externalApi:
-        max-attempts: 3
-        wait-duration: 1s
-        enable-exponential-backoff: true
-        exponential-backoff-multiplier: 2
+        timeout-duration: 5s   # default 1s: slower calls count as failures
+spring:
+  cloud:
+    circuitbreaker:
+      http-services:
+        enabled: false   # else every @ImportHttpServices group gets a breaker with the 1 s default time limit
+```
 
-  ratelimiter:
-    instances:
-      externalApi:
-        limit-for-period: 10
-        limit-refresh-period: 1s
-        timeout-duration: 0s
+Retries and concurrency limits are built into Spring Framework 7, without a library:
+
+```java
+@Configuration
+@EnableResilientMethods
+class ResilienceConfig {
+}
+
+@Service
+@RequiredArgsConstructor
+public class InventoryClient {
+    private final InventoryApi inventoryApi;   // @HttpExchange client (boot4.md)
+
+    @Retryable(includes = ResourceAccessException.class, maxRetries = 3, delay = 1000, multiplier = 2)   // I/O errors, not 4xx
+    @ConcurrencyLimit(10)   // callers beyond 10 wait
+    public Stock getStock(String sku) {
+        return inventoryApi.getStock(sku);
+    }
+}
 ```
 
 ## Distributed Tracing - Micrometer + OpenTelemetry
@@ -269,37 +298,33 @@ management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
-
-logging:
-  pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
 ```
 
 ```xml
-<!-- pom.xml -->
+<!-- pom.xml: Micrometer Tracing with the OpenTelemetry bridge and the OTLP exporter -->
 <dependency>
-    <groupId>io.micrometer</groupId>
-    <artifactId>micrometer-tracing-bridge-otel</artifactId>
-</dependency>
-<dependency>
-    <groupId>io.opentelemetry</groupId>
-    <artifactId>opentelemetry-exporter-otlp</artifactId>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-opentelemetry</artifactId>
 </dependency>
 ```
 
 ### Zipkin Exporter (Alternative)
+
+`spring-boot-starter-zipkin` (Brave) instead of the OpenTelemetry starter:
 
 ```yaml
 management:
   tracing:
     sampling:
       probability: 1.0
-  zipkin:
-    tracing:
-      endpoint: http://localhost:9411/api/v2/spans
+    export:
+      zipkin:
+        endpoint: http://localhost:9411/api/v2/spans
 ```
 
 ### Custom Spans with Observation API
@@ -327,42 +352,28 @@ public class OrderService {
 ```java
 @Configuration
 @LoadBalancerClient(name = "user-service", configuration = UserServiceLoadBalancerConfig.class)
-public class LoadBalancerConfiguration {
+class LoadBalancerConfiguration {
 }
 
-@Configuration
-public class UserServiceLoadBalancerConfig {
+// No @Configuration: as a scanned bean it would apply to every client
+class UserServiceLoadBalancerConfig {
 
     @Bean
-    public ReactorLoadBalancer<ServiceInstance> randomLoadBalancer(
-            LoadBalancerClientFactory clientFactory,
-            ObjectProvider<LoadBalancerProperties> properties) {
-        return new RandomLoadBalancer(
-            clientFactory.getLazyProvider("user-service", ServiceInstanceListSupplier.class),
-            "user-service"
-        );
+    ReactorLoadBalancer<ServiceInstance> randomLoadBalancer(Environment environment,
+            LoadBalancerClientFactory clientFactory) {
+        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);   // "user-service"
+        return new RandomLoadBalancer(clientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class), name);
     }
 }
 
-@Service
-public class UserClientService {
-    private final RestClient restClient;
-
-    public UserClientService(RestClient.Builder builder) {
-        this.restClient = builder
-            .baseUrl("http://user-service")
-            .build();
-    }
-
-    public User getUser(Long id) {
-        return restClient
-            .get()
-            .uri("/users/{id}", id)
-            .retrieve()
-            .body(User.class);
-    }
+// Without a base-url, a group gets http://<group name> and is load-balanced
+@Configuration
+@ImportHttpServices(group = "user-service", types = UserClient.class)
+class UserClientConfig {
 }
 ```
+
+`UserClient` is the `@HttpExchange` interface from `boot4.md`. A hand-built `RestClient` resolves `http://user-service` only through a `@LoadBalanced RestClient.Builder` bean.
 
 ## Health Checks, Actuator & Prometheus
 
@@ -442,49 +453,14 @@ Virtual threads eliminate the need for WebFlux in most cases. With `spring.threa
 
 **When to still use WebFlux:** streaming responses, SSE, WebSocket, or when you need backpressure.
 
-## HTTP Interface Clients (Spring 6+)
+## HTTP Interface Clients
 
-```java
-// Declarative HTTP client - replaces OpenFeign
-public interface UserClient {
-
-    @GetExchange("/users/{id}")
-    UserResponse getUser(@PathVariable Long id);
-
-    @GetExchange("/users")
-    List<UserResponse> getAllUsers();
-
-    @PostExchange("/users")
-    UserResponse createUser(@RequestBody UserCreateRequest request);
-}
-
-// Configuration
-@Configuration
-public class ClientConfig {
-
-    @Bean
-    public UserClient userClient(RestClient.Builder builder) {
-        RestClient restClient = builder
-            .baseUrl("http://user-service")
-            .build();
-        return HttpServiceProxyFactory
-            .builderFor(RestClientAdapter.create(restClient))
-            .build()
-            .createClient(UserClient.class);
-    }
-}
-```
+Declarative clients (`@HttpExchange` interfaces registered with `@ImportHttpServices`, no `HttpServiceProxyFactory`) are in "Declarative HTTP Clients: @ImportHttpServices" in `boot4.md`; load-balanced groups are in "Load Balancing with Spring Cloud LoadBalancer" above.
 
 ## GraalVM Native Image
 
 ```xml
-<!-- pom.xml - add native profile support -->
-<parent>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-parent</artifactId>
-    <version>4.1.0</version>
-</parent>
-
+<!-- pom.xml: the Boot parent already has the native profile; add the plugin -->
 <plugin>
     <groupId>org.graalvm.buildtools</groupId>
     <artifactId>native-maven-plugin</artifactId>
@@ -510,7 +486,7 @@ Benefits: ~50ms startup, ~50MB RSS memory. Trade-offs: longer build time, reflec
 | **Config Server** | Centralized configuration management |
 | **Eureka** | Service discovery and registration |
 | **Gateway** | API gateway with routing, filtering, load balancing |
-| **Circuit Breaker** | Fault tolerance and fallback patterns |
+| **Circuit Breaker** | Fault tolerance and fallbacks (Spring Cloud CircuitBreaker); retries and limits in Spring Framework 7 |
 | **Load Balancer** | Client-side load balancing |
 | **Tracing (OTLP)** | Distributed tracing with OpenTelemetry |
 | **Actuator** | Production-ready monitoring and management |

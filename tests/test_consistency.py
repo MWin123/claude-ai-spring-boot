@@ -1,7 +1,7 @@
 """Facts repeated across files stay identical."""
 import re
 
-from helpers import CLAUDE_FILES, ROOT, code_blocks, rel
+from helpers import CLAUDE_FILES, DOCS, ROOT, code_blocks, rel
 
 WEB_MD = ROOT / "skills" / "spring-boot" / "references" / "web.md"
 
@@ -34,6 +34,7 @@ def test_versions_agree():
     libraries = {
         "openapi-generator": r"openapi-generator|org\.openapi\.generator",
         "springdoc": r"springdoc",
+        "Spring Cloud": r"spring-cloud-dependencies|spring-cloud\.version",
     }
     for library, pattern in libraries.items():
         versions = {}
@@ -43,6 +44,20 @@ def test_versions_agree():
                     for version in re.findall(r"(?<![\w.])(\d+\.\d+\.\d+)(?![\w.])", line):
                         versions.setdefault(version, []).append(f"{rel(path)}:{n}")
         assert len(versions) <= 1, f"{library} versions disagree: {versions}"
+
+
+def test_boot_versions_agree():
+    """Every spelled-out Spring Boot version (parent, Gradle plugin, "Boot 4.1.2") is the same."""
+    pattern = re.compile(
+        r"spring-boot-starter-parent</artifactId>\s*<version>(\d+\.\d+\.\d+)"
+        r'|id\("org\.springframework\.boot"\) version "(\d+\.\d+\.\d+)"'
+        r"|\bBoot:? (\d+\.\d+\.\d+)"
+    )
+    versions = {}
+    for path in DOCS:
+        for m in pattern.finditer(path.read_text()):
+            versions.setdefault(next(g for g in m.groups() if g), []).append(rel(path))
+    assert len(versions) <= 1, f"Spring Boot versions disagree: {versions}"
 
 
 def test_examples_use_spring_boot_4():

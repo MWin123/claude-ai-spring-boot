@@ -93,9 +93,15 @@ public class Author {
     @BatchSize(size = 25)  // Fetch 25 at a time
     private List<Book> books;
 }
+```
 
-// Or globally in application.properties
-spring.jpa.properties.hibernate.default_batch_fetch_size=25
+```yaml
+# Or globally in application.yml
+spring:
+  jpa:
+    properties:
+      hibernate:
+        default_batch_fetch_size: 25
 ```
 
 ### Detecting N+1

@@ -33,4 +33,4 @@
 - Do the work yourself with the matching skill; subagents only run tests, review, and research.
 - Anything that runs tests goes to `tests`, including the build steps of the skills' workflows. Relay its summary, never raw output.
 - Review a single commit or file with `quick-reviewer`; a finished feature or a security audit with `code-reviewer`.
-- Look up current or version-specific documentation (release notes, migration guides, library versions) with `docs-researcher` when the skills don't cover it; don't search the web yourself. Name the exact Boot and Java versions in the prompt (`Boot: 4.0.1, Java: 21`).
+- Look up current or version-specific documentation (release notes, migration guides, library versions) with `docs-researcher` when the skills don't cover it; don't search the web yourself. Name the exact Boot and Java versions in the prompt (`Boot: 4.1.2, Java: 21`).

@@ -19,6 +19,16 @@ BANNED = {
     r"/v3/api-docs\.yaml": "Swagger UI loads the hand-written /openapi.yaml",
     r"@ExceptionHandler\(Exception\.class\)": "catch-all turns Spring Security's 403 into a 500",
     r"@(?:Request|Get|Post|Put|Delete|Patch)Mapping\b": "contract-first: mappings come from the generated *Api interface",
+    r"spring-boot-starter-aop\b": "Boot 4's starter is spring-boot-starter-aspectj",
+    r"\bHttpServiceProxyFactory\b": "@ImportHttpServices registers the clients (boot4.md)",
+    r"resilience4j-spring-boot3\b": "fails at startup on Boot 4",
+    r"@(?:CircuitBreaker|Retry|RateLimiter|Bulkhead)\(name\b": "Resilience4j annotations need resilience4j-spring-boot3, which fails on Boot 4",
+}
+# Property keys that Boot 4 and Spring Cloud 2025.1 no longer bind, matched against the full dotted key
+BANNED_KEYS = {
+    r"management\.otlp\.tracing\b": "use management.opentelemetry.tracing.export.otlp.*",
+    r"management\.zipkin\.tracing\b": "use management.tracing.export.zipkin.*",
+    r"spring\.cloud\.gateway\.(?!server\b)": "use spring.cloud.gateway.server.webflux.*",
 }
 # Boot 4 API versioning on hand-written mappings (migrated projects), not application code
 CONTRACT_FIRST_EXEMPT = {"skills/spring-boot/references/boot4.md"}
@@ -42,6 +52,40 @@ def blocks(langs):
 @pytest.mark.parametrize("path,block", [p for p in blocks({"yaml", "yml"}) if "{{" not in p.values[1].body])
 def test_yaml_blocks_parse(path, block):  # Helm templates ({{ }}) are not YAML until rendered
     list(yaml.safe_load_all(block.body))
+
+
+def config_keys(block):
+    """Every dotted key of a YAML or properties block, parents included."""
+    if block.lang == "properties":
+        return [l.split("=", 1)[0].strip() for l in block.body.splitlines() if "=" in l and not l.lstrip().startswith("#")]
+    keys = []
+
+    def walk(node, prefix):
+        for key, value in node.items() if isinstance(node, dict) else ():
+            keys.append(f"{prefix}{key}")
+            walk(value, f"{prefix}{key}.")
+
+    for document in yaml.safe_load_all(block.body):
+        walk(document, "")
+    return keys
+
+
+@pytest.mark.parametrize("path,block", [p for p in blocks({"yaml", "yml", "properties"}) if "{{" not in p.values[1].body])
+def test_no_banned_config_keys(path, block):
+    found = [f"{key} ({reason})" for key in config_keys(block) for pattern, reason in BANNED_KEYS.items() if re.match(pattern, key)]
+    assert not found, "\n".join(found)
+
+
+@pytest.mark.parametrize("path", CLAUDE_FILES, ids=rel)
+def test_java_blocks_hold_no_config(path):
+    """YAML or properties inside a java block escape the YAML parse and key checks."""
+    found = []
+    for block in code_blocks(path.read_text()):
+        if block.lang == "java":
+            for offset, line in enumerate(block.body.splitlines()):
+                if re.match(r"[a-z][\w-]*:\s*(#.*)?$|[a-z][\w-]*(\.[\w-]+)+\s*=", line):
+                    found.append(f"line {block.line + offset}: {line.strip()}")
+    assert not found, "\n".join(found)
 
 
 @pytest.mark.parametrize("path,block", blocks({"json"}))
