@@ -98,7 +98,7 @@ The endpoints and models are defined in `src/main/resources/static/openapi.yaml`
       required: true
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/ProductRequest' }   # required: name (maxLength 100), price (decimal string >= 0)
+          schema: { $ref: '#/components/schemas/ProductRequest' }   # required: name (minLength 1, maxLength 100), price (decimal string >= 0)
     responses:
       '201':
         description: Created

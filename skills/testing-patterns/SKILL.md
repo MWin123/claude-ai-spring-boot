@@ -152,12 +152,13 @@ class ProductControllerTest {
             .andExpect(jsonPath("$.name").value("Widget"));
     }
 
-    // ✅ Negative - validation failure
-    @Test
+    // ✅ Negative - validation failure at the spec's limits (name: minLength 1, maxLength 100)
+    @ParameterizedTest
+    @ValueSource(ints = {0, 101})
     @WithMockUser(roles = "ADMIN")
-    @DisplayName("POST /api/v1/products - blank name returns 400")
-    void createProduct_blankName_returns400() throws Exception {
-        var request = new ProductRequest("", new BigDecimal("10.00"));
+    @DisplayName("POST /api/v1/products - name length out of range returns 400")
+    void createProduct_nameLengthOutOfRange_returns400(int length) throws Exception {
+        var request = new ProductRequest("x".repeat(length), new BigDecimal("10.00"));
 
         mockMvc.perform(post("/api/v1/products")
                 .with(csrf())   // SecurityMockMvcRequestPostProcessors.csrf(); without it every POST is 403
@@ -257,6 +258,8 @@ Import it with `@Import(TestcontainersConfig.class)` together with the `testcont
 ## Repository Slice Tests (@DataJpaTest)
 
 ### On H2 (default, fast)
+
+Entities with auditing fields (`@CreatedDate`, like `User` in `data.md`) also need `@Import(JpaAuditingConfig.class)`: slices don't load the `@Configuration` that carries `@EnableJpaAuditing`, so `created_at` stays NULL and the insert fails.
 
 ```java
 @DataJpaTest
@@ -449,17 +452,9 @@ public final class TestData {
 
 ## Parameterized Tests
 
+Test input validation in the controller slice, like `createProduct_nameLengthOutOfRange_returns400` above: the constraints live on the generated interfaces and models, not on the service. For other inputs:
+
 ```java
-@ParameterizedTest
-@ValueSource(strings = {"", " ", "ab"})
-@DisplayName("Should reject invalid usernames")
-void shouldRejectInvalidUsername(String username) {
-    var request = new UserRequest(username, "valid@email.com");
-
-    assertThatThrownBy(() -> userService.create(request))
-        .isInstanceOf(ConstraintViolationException.class);
-}
-
 @ParameterizedTest
 @CsvSource({
     "admin@test.com, ADMIN, true",

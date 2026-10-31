@@ -128,7 +128,7 @@ Before writing or changing the spec, settle these points. Take the answer from t
 | Pagination | Every list operation that can grow | `page` (min 0, default 0) and `size` (min 1, max 100, default 20) query parameters; response with `content` and `totalElements`. Never return an unbounded array |
 | Filtering and sorting | Which fields are queryable | Only the ones the request needs, as explicit query parameters |
 | Success responses | Status code per operation | `200` read/update, `201` create (with `Location` header), `204` delete or no body |
-| Errors | Which failures each operation can produce | `400` for operations with input, `404` for operations with `{id}`, `409` for unique-field conflicts, `401`/`403` follow from `security`. All `application/problem+json` with the `ProblemDetail` schema |
+| Errors | Which failures each operation can produce | `400` for operations with input, `404` for operations with `{id}`, `409` for unique-field conflicts and concurrent updates (`@Version`), `401`/`403` follow from `security`. All `application/problem+json` with the `ProblemDetail` schema |
 | Constraints | Every input field | `required` where the service needs the value; `minLength`/`maxLength` on every string, `minimum`/`maximum` on numbers, `pattern` or `format` where it applies. No unbounded strings |
 | Schemas | Separate request and response schemas | `CreateXRequest` / `UpdateXRequest` / `XResponse`; never one schema for both directions; no entity fields the client must not see (password hashes, internal ids); IDs `int64` or `uuid` |
 | Update semantics | Full or partial update | `PUT` replaces (all fields required), `PATCH` takes an all-optional schema |
@@ -331,6 +331,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
         log.warn("Data integrity violation", ex);
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Resource may already exist");
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)   // @Version conflict, raised at commit (jpa-patterns)
+    public ProblemDetail handleOptimisticLock(OptimisticLockingFailureException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Resource was modified concurrently; reload and retry");
     }
 
     @Override   // invalid body: add the field errors to the 400 response

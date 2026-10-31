@@ -49,7 +49,7 @@ for (Author author : authors) {
 // ✅ GOOD: Single query with JOIN FETCH
 public interface AuthorRepository extends JpaRepository<Author, Long> {
 
-    @Query("SELECT a FROM Author a JOIN FETCH a.books")
+    @Query("SELECT a FROM Author a LEFT JOIN FETCH a.books")   // LEFT: authors without books stay
     List<Author> findAllWithBooks();
 }
 
@@ -218,14 +218,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 public class ProductService {
     private final ProductRepository repo;
 
-    public List<Product> findAll() {
-        return repo.findAll();  // Read-only: skips dirty checking
+    public List<ProductResponse> findAll() {
+        return repo.findAll().stream().map(ProductMapper::toResponse).toList();  // Read-only: skips dirty checking
     }
 
-    @Transactional  // Override: read-write for mutations
-    public Product create(ProductRequest request) {
-        return repo.save(Product.builder().name(request.name()).build());
-    }
+    // Writes override it with @Transactional, as create() in the spring-boot skill's ProductService
 }
 ```
 
@@ -297,22 +294,19 @@ public class Product {
     }
 }
 
-// Handling optimistic lock failure
+// A conflict surfaces at commit, after the method returns: the GlobalExceptionHandler in web.md maps
+// OptimisticLockingFailureException to 409. To handle it here instead, call repo.saveAndFlush(product) in a try.
 @Service
 @RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
 
     @Transactional
-    public Product updatePrice(Long id, BigDecimal newPrice) {
+    public ProductResponse updatePrice(Long id, BigDecimal newPrice) {
         Product product = repo.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-        product.setPrice(newPrice);
-        try {
-            return repo.save(product);
-        } catch (OptimisticLockingFailureException e) {
-            throw new ConflictException("Product was modified by another user");
-        }
+        product.setPrice(newPrice);   // managed entity: flushed and version-checked at commit
+        return ProductMapper.toResponse(product);
     }
 }
 ```
@@ -363,13 +357,15 @@ public class Customer {
     private String name;
 }
 
-// Custom column name
+// Custom column: ACTIVE stores 1 for live rows (the default DELETED stores true for deleted ones)
 @Entity
-@SoftDelete(columnName = "is_active", converter = NumericBooleanConverter.class)
+@SoftDelete(columnName = "is_active", strategy = SoftDeleteType.ACTIVE, converter = NumericBooleanConverter.class)
 public class Product {
     // ...
 }
 ```
+
+Both columns come from a migration (`db-migrations`): `deleted BOOLEAN NOT NULL DEFAULT FALSE`, or `is_active INTEGER NOT NULL DEFAULT 1` for the converter.
 
 ### Record as DTO in Queries
 
@@ -395,7 +391,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Page<User> findByActiveTrue(Pageable pageable);
 
-    Slice<User> findByRole(String role, Pageable pageable);  // No COUNT query
+    Slice<User> findByRolesName(String roleName, Pageable pageable);  // No COUNT query; roles → Role.name
 }
 
 // Usage
@@ -408,13 +404,13 @@ Page<User> page = userRepository.findByActiveTrue(
 
 ```java
 // Interface-based projection - fetches only declared fields
-public interface UserNameOnly {
-    String getFirstName();
-    String getLastName();
+public interface UserContact {
+    String getUsername();
+    String getEmail();
 }
 
 public interface UserRepository extends JpaRepository<User, Long> {
-    List<UserNameOnly> findAllByActiveTrue();
+    List<UserContact> findAllByActiveTrue();
 }
 ```
 
