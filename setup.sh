@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copies agents, skills, config/settings.json, config/CLAUDE.md and config/.gitignore into a Spring Boot project.
+# Copies agents, skills, config/settings.json and config/CLAUDE.md into a Spring Boot project.
 # Usage: ./setup.sh [project-dir]   (defaults to the current directory)
 set -euo pipefail
 
@@ -43,16 +43,5 @@ if [[ -f "$TARGET_DIR/CLAUDE.md" ]] && ! cmp -s "$SOURCE_DIR/config/CLAUDE.md" "
   echo "Existing CLAUDE.md saved as $(basename "$BACKUP")"
 fi
 cp "$SOURCE_DIR/config/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
-# An existing .gitignore keeps its rules and only gets the template's missing ones
-GITIGNORE="$TARGET_DIR/.gitignore"
-if [[ -f "$GITIGNORE" ]]; then
-  MISSING="$(grep -vxF -f "$GITIGNORE" "$SOURCE_DIR/config/.gitignore" | grep -v -e '^#' -e '^$' || true)"
-  if [[ -n "$MISSING" ]]; then
-    printf '\n### Added by setup.sh ###\n%s\n' "$MISSING" >> "$GITIGNORE"
-    echo "Missing rules added to .gitignore"
-  fi
-else
-  cp "$SOURCE_DIR/config/.gitignore" "$GITIGNORE"
-fi
 
-echo "Copied agents, skills, settings.json, CLAUDE.md and .gitignore to $TARGET_DIR"
+echo "Copied agents, skills, settings.json and CLAUDE.md to $TARGET_DIR"

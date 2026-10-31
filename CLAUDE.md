@@ -2,7 +2,7 @@
 
 ## Repository
 - This is a template, not an application: agents, skills and config that `setup.sh` copies into Spring Boot projects. There is no Spring Boot build here.
-- Copied into projects: `agents/` and `skills/` (to `.claude/`), `config/settings.json` (to `.claude/settings.json`), `config/CLAUDE.md` (to the project root), `config/.gitignore` (to the project root; only missing rules are added to an existing one). Everything else (`tests/`, `.github/`, `.claude/settings.json`, README, this file) stays here.
+- Copied into projects: `agents/` and `skills/` (to `.claude/`), `config/settings.json` (to `.claude/settings.json`) and `config/CLAUDE.md` (to the project root). Everything else (`tests/`, `.github/`, `.claude/settings.json`, README, this file) stays here.
 - `config/CLAUDE.md` holds the rules for generated projects; don't apply them to this repository.
 
 ## Workflow

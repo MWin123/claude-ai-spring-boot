@@ -1,4 +1,4 @@
-"""setup.sh copies agents, skills and config/ (settings.json, CLAUDE.md, .gitignore) into a project, and nothing else."""
+"""setup.sh copies agents, skills and config/ (settings.json, CLAUDE.md) into a project, and nothing else."""
 import filecmp
 import subprocess
 
@@ -35,30 +35,22 @@ def test_copies_only_the_claude_files(tmp_path, build_file):
     result = run_setup(tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([".claude", ".gitignore", "CLAUDE.md", build_file])
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([".claude", "CLAUDE.md", build_file])
     assert sorted(p.name for p in (tmp_path / ".claude").iterdir()) == ["agents", "settings.json", "skills"]
     assert_same_tree(ROOT / "agents", tmp_path / ".claude" / "agents")
     assert_same_tree(ROOT / "skills", tmp_path / ".claude" / "skills")
     assert filecmp.cmp(CONFIG / "settings.json", tmp_path / ".claude" / "settings.json", shallow=False)
     assert filecmp.cmp(CONFIG / "CLAUDE.md", tmp_path / "CLAUDE.md", shallow=False)
-    assert filecmp.cmp(CONFIG / ".gitignore", tmp_path / ".gitignore", shallow=False)
 
 
-def test_adds_only_missing_gitignore_rules(project):
+def test_leaves_an_existing_gitignore_alone(project):
     gitignore = project / ".gitignore"
-    gitignore.write_text("target/\n*.local")
+    gitignore.write_text("target/\n")
 
     result = run_setup(project)
-    after_first_run = gitignore.read_text()
-    run_setup(project)
 
     assert result.returncode == 0, result.stderr
-    assert after_first_run.startswith("target/\n*.local\n")
-    lines = after_first_run.splitlines()
-    assert lines.count("target/") == 1
-    template_rules = [l for l in (CONFIG / ".gitignore").read_text().splitlines() if l and not l.startswith("#")]
-    assert set(template_rules) <= set(lines)
-    assert gitignore.read_text() == after_first_run, "a second run must not add rules again"
+    assert gitignore.read_text() == "target/\n"
 
 
 def test_defaults_to_the_current_directory(project):

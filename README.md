@@ -4,7 +4,7 @@ Production-ready skills and agents for building Spring Boot 4.x / Java 21+ appli
 
 ## Installation
 
-Run the setup script from a Spring Boot project that uses Maven or Gradle (it needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise, so create a new project first, e.g. with Spring Initializr). It copies `agents/`, `skills/` and `config/settings.json` into `.claude/` and `config/CLAUDE.md` and `config/.gitignore` into the project root:
+Run the setup script from a Spring Boot project that uses Maven or Gradle (it needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise, so create a new project first, e.g. with Spring Initializr). It copies `agents/`, `skills/` and `config/settings.json` into `.claude/` and `config/CLAUDE.md` into the project root. The project keeps its own `.gitignore` (Spring Initializr generates one):
 
 ```bash
 cd my-project
@@ -17,7 +17,7 @@ Or pass the project directory explicitly from anywhere:
 /path/to/claude-ai-spring-boot/setup.sh /path/to/my-project
 ```
 
-The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched; an existing `.gitignore` keeps its rules and gets only the template's missing ones.
+The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched.
 
 Claude Code loads `.claude/agents/` and `.claude/skills/` from the project automatically, and `CLAUDE.md` from the project root. Start `claude` in the project directory to use them.
 
@@ -181,7 +181,6 @@ You can also invoke skills and agents directly:
 │   │       └── web.md
 │   └── testing-patterns/SKILL.md
 ├── config/                 # copied into the project
-│   ├── .gitignore          # Spring Boot ignore rules (root of the project)
 │   ├── CLAUDE.md           # project rules (root of the project)
 │   └── settings.json       # .claude/settings.json
 ├── tests/                  # checks for this template, not copied by setup.sh
