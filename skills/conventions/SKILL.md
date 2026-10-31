@@ -37,7 +37,7 @@ These conventions apply to ALL code generated or reviewed in the project. Follow
 
 ## Default application.yml
 
-Every new app starts with virtual threads, Problem Details and graceful shutdown:
+Every new app starts with virtual threads, Problem Details, graceful shutdown and JSON console logs (plain text only in the `human-logs` profile, `logging-patterns` skill):
 
 ```yaml
 spring:
@@ -51,4 +51,8 @@ spring:
     timeout-per-shutdown-phase: 30s
 server:
   shutdown: graceful
+logging:
+  structured:
+    format:
+      console: logstash
 ```

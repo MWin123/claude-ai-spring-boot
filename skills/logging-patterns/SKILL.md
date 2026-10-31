@@ -31,20 +31,7 @@ when_to_use: '"add logging", "improve logs", "debug this"; analyzing application
 
 ### Recommended Setup for AI-Assisted Development
 
-```yaml
-# application.yml - JSON by default
-logging:
-  structured:
-    format:
-      console: logstash  # Spring Boot 4.x
-
-# When YOU need to read logs manually:
-# Option 1: Use jq
-# tail -f app.log | jq .
-
-# Option 2: Switch profile temporarily
-# java -jar app.jar --spring.profiles.active=human-logs
-```
+The default `application.yml` in the `conventions` skill sets `logging.structured.format.console: logstash`. To read logs yourself, pipe them through `jq` ("Reading Logs with AI/Claude Code") or switch to the `human-logs` profile ("Profile-Based Switching").
 
 ### Log Format Optimized for AI Analysis
 
@@ -74,14 +61,15 @@ logging:
 When asking AI to analyze logs:
 
 ```bash
+# The console is JSON, one object per line: pipe it into jq (locally: java -jar target/<app>.jar | jq ...)
 # Get recent errors
-cat app.log | jq 'select(.level == "ERROR")' | tail -20
+kubectl logs deploy/<app-name> | jq 'select(.level == "ERROR")' | tail -20
 
 # Follow specific request
-cat app.log | jq 'select(.requestId == "req-abc123")'
+kubectl logs deploy/<app-name> | jq 'select(.requestId == "req-abc123")'
 
 # Find slow operations
-cat app.log | jq 'select(.duration_ms > 1000)'
+kubectl logs deploy/<app-name> | jq 'select(.duration_ms > 1000)'
 ```
 
 AI can then:
@@ -97,7 +85,7 @@ AI can then:
 Spring Boot 4.x has built-in JSON logging — no extra dependencies required.
 
 ```yaml
-# application.yml — this is the REQUIRED default for every app
+# application.yml (already in the conventions default)
 logging:
   structured:
     format:
@@ -123,9 +111,7 @@ management:
 logging:
   structured:
     format:
-      console: logstash
-  pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+      console: logstash   # the JSON formats add traceId/spanId from the MDC; logging.pattern.level has no effect
 ```
 
 Output:
@@ -138,16 +124,7 @@ The `traceId` field in JSON logs is the same trace ID visible in Jaeger, Tempo, 
 ### Profile-Based Switching
 
 ```yaml
-# application.yml (default - JSON for AI/prod)
-spring:
-  profiles:
-    default: json-logs
-
----
-spring:
-  config:
-    activate:
-      on-profile: json-logs
+# application.yml: JSON under every profile (kubernetes, prod, ...) unless human-logs is active
 logging:
   structured:
     format:
@@ -158,8 +135,10 @@ spring:
   config:
     activate:
       on-profile: human-logs
-# No structured format = human-readable default
 logging:
+  structured:
+    format:
+      console: ""   # empty turns structured logging off
   pattern:
     console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
 ```
@@ -335,4 +314,4 @@ public class AsyncConfig {
 | `MDC.put("key", "value")` | Add context to all logs in thread |
 | `MDC.clear()` | Clean up in `finally` block |
 | `logging.structured.format.console: logstash` | Enable JSON (Spring Boot 4.x) |
-| `kv("field", value)` | Structured argument (Logstash encoder) |
+| `log.atInfo().addKeyValue("field", value).log("msg")` | Structured field (separate JSON member) |
