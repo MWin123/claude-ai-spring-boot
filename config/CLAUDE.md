@@ -1,6 +1,6 @@
 ## Workflow
 - Use plan mode for non-trivial tasks (3+ steps or architectural decisions); write the plan upfront.
-- After a user correction, record the pattern in `tasks/lessons.md`; review it at session start.
+- After a user correction, add the rule to the matching section of this file, or sharpen the rule that is there; one line, no duplicates.
 - Never mark a task done without proof: run tests, check logs, diff behavior against main when relevant.
 - Make the simplest change that works; find root causes, no temporary fixes. For non-trivial changes look for the more elegant solution, but don't overengineer.
 
