@@ -315,7 +315,7 @@ public class ReportService {
 ```
 
 **Do NOT use with virtual threads:**
-- `synchronized` blocks holding across blocking calls (use `ReentrantLock` instead)
+- On Java 21–23, `synchronized` blocks around blocking calls: they pin the carrier thread, so use `ReentrantLock` there. Java 24+ no longer pins them (JEP 491).
 - Thread-local heavy frameworks (check compatibility first)
 
 ## Text Blocks (Java 15+)
@@ -376,6 +376,6 @@ User oldest = users.getLast();
 | **Lombok** (targeted) | Services, components, non-entity classes; safe subset on entities (`@Getter`, `@Setter`, `@NoArgsConstructor`, `@Builder` on a constructor) | `@Data`/`@EqualsAndHashCode`/`@ToString`/`@Value` on entities, DTOs (use records) |
 | **Sealed classes** | Closed type hierarchies, domain events | Open extension needed |
 | **Pattern matching switch** | Handling sealed types, replacing if-else chains | Simple equality checks |
-| **Virtual threads** | High-concurrency blocking I/O | CPU-bound work, `synchronized` over I/O |
+| **Virtual threads** | High-concurrency blocking I/O | CPU-bound work, `synchronized` over I/O on Java 21–23 |
 | **Text blocks** | JPQL queries, JSON test data, SQL | Single-line strings |
 | **SequencedCollections** | First/last access on ordered collections | Unordered sets/maps |
