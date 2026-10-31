@@ -1,33 +1,22 @@
 ---
 name: jpa-patterns
 description: JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries). Use when user has JPA performance issues, LazyInitializationException, or asks about entity relationships and fetching strategies.
+when_to_use: '"N+1 problem", "too many queries", one extra query per row or per entity when loading a list or its associations; LazyInitializationException; fetch strategies (EAGER vs LAZY); transaction issues; entity relationship design; query optimization.'
 ---
 
 # JPA Patterns Skill
 
 Best practices and common pitfalls for JPA/Hibernate in Spring applications.
 
-## When to Use
-- User mentions "N+1 problem" / "too many queries"
-- LazyInitializationException errors
-- Questions about fetch strategies (EAGER vs LAZY)
-- Transaction management issues
-- Entity relationship design
-- Query optimization
-
----
-
 ## Quick Reference: Common Problems
 
 | Problem | Symptom | Solution |
 |---------|---------|----------|
 | N+1 queries | Many SELECT statements | JOIN FETCH, @EntityGraph |
-| LazyInitializationException | Error outside transaction | Open Session in View, DTO projection, JOIN FETCH |
+| LazyInitializationException | Error outside transaction | JOIN FETCH, DTO projection, mapping inside the `@Transactional` service (not Open Session in View) |
 | Slow queries | Performance issues | Pagination, projections, indexes |
 | Dirty checking overhead | Slow updates | Read-only transactions, DTOs |
 | Lost updates | Concurrent modifications | Optimistic locking (@Version) |
-
----
 
 ## N+1 Problem
 
@@ -60,7 +49,7 @@ for (Author author : authors) {
 // ✅ GOOD: Single query with JOIN FETCH
 public interface AuthorRepository extends JpaRepository<Author, Long> {
 
-    @Query("SELECT a FROM Author a JOIN FETCH a.books")
+    @Query("SELECT a FROM Author a LEFT JOIN FETCH a.books")   // LEFT: authors without books stay
     List<Author> findAllWithBooks();
 }
 
@@ -104,9 +93,15 @@ public class Author {
     @BatchSize(size = 25)  // Fetch 25 at a time
     private List<Book> books;
 }
+```
 
-// Or globally in application.properties
-spring.jpa.properties.hibernate.default_batch_fetch_size=25
+```yaml
+# Or globally in application.yml
+spring:
+  jpa:
+    properties:
+      hibernate:
+        default_batch_fetch_size: 25
 ```
 
 ### Detecting N+1
@@ -125,8 +120,6 @@ logging:
     org.hibernate.SQL: DEBUG
     org.hibernate.orm.jdbc.bind: TRACE
 ```
-
----
 
 ## Lazy Loading
 
@@ -208,13 +201,11 @@ public class OrderService {
 // ✅ Avoid lazy loading entirely - query only what you need
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-    @Query("SELECT new pl.piomin.services.dto.OrderSummary(o.id, o.status, SIZE(o.items)) " +
+    @Query("SELECT new com.example.dto.OrderSummary(o.id, o.status, SIZE(o.items)) " +
            "FROM Order o WHERE o.id = :id")
     Optional<OrderSummary> findSummaryById(@Param("id") Long id);
 }
 ```
-
----
 
 ## Transaction Management
 
@@ -223,23 +214,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 ```java
 @Service
 @Transactional(readOnly = true)  // Default for all methods
+@RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
 
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
+    public List<ProductResponse> findAll() {
+        return repo.findAll().stream().map(ProductMapper::toResponse).toList();  // Read-only: skips dirty checking
     }
 
-    public List<Product> findAll() {
-        return repo.findAll();  // Read-only: skips dirty checking
-    }
-
-    @Transactional  // Override: read-write for mutations
-    public Product create(ProductRequest request) {
-        var product = new Product();
-        product.setName(request.name());
-        return repo.save(product);
-    }
+    // Writes override it with @Transactional, as create() in the spring-boot skill's ProductService
 }
 ```
 
@@ -264,12 +247,9 @@ public class OrderService {
 
 // ✅ GOOD: Extract to separate bean
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final OrderProcessor processor;
-
-    public OrderService(OrderProcessor processor) {
-        this.processor = processor;
-    }
 
     public void processOrders(List<Long> ids) {
         for (Long id : ids) {
@@ -287,50 +267,49 @@ public class OrderProcessor {
 }
 ```
 
----
-
 ## Optimistic Locking
 
 ```java
 @Entity
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     private String name;
     private BigDecimal price;
 
     @Version
-    private Long version;  // Hibernate checks this on update
+    @Setter(AccessLevel.NONE)
+    private Long version;  // Hibernate checks this on update; never set it by hand
 
-    // getters/setters
+    @Builder                                    // business fields only: no id/version
+    public Product(String name, BigDecimal price) {
+        this.name = name;
+        this.price = price;
+    }
 }
 
-// Handling optimistic lock failure
+// A conflict surfaces at commit, after the method returns: the GlobalExceptionHandler in web.md maps
+// OptimisticLockingFailureException to 409. To handle it here instead, call repo.saveAndFlush(product) in a try.
 @Service
+@RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
 
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
-    }
-
     @Transactional
-    public Product updatePrice(Long id, BigDecimal newPrice) {
+    public ProductResponse updatePrice(Long id, BigDecimal newPrice) {
         Product product = repo.findById(id)
-            .orElseThrow(() -> new EntityNotFoundException("Product not found"));
-        product.setPrice(newPrice);
-        try {
-            return repo.save(product);
-        } catch (OptimisticLockingFailureException e) {
-            throw new ConflictException("Product was modified by another user");
-        }
+            .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        product.setPrice(newPrice);   // managed entity: flushed and version-checked at commit
+        return ProductMapper.toResponse(product);
     }
 }
 ```
-
----
 
 ## Modern Hibernate Features
 
@@ -348,15 +327,16 @@ import jakarta.persistence.GenerationType;
 
 ```java
 @Entity
+@Getter
+@Setter
 public class Event {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)  // Native UUID generation
+    @Setter(AccessLevel.NONE)
     private UUID id;
 
     private String name;
-
-    // getters/setters
 }
 ```
 
@@ -366,23 +346,26 @@ public class Event {
 // Built-in soft delete support
 @Entity
 @SoftDelete  // Adds 'deleted' boolean column, filters automatically
+@Getter
+@Setter
 public class Customer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     private String name;
-
-    // getters/setters
 }
 
-// Custom column name
+// Custom column: ACTIVE stores 1 for live rows (the default DELETED stores true for deleted ones)
 @Entity
-@SoftDelete(columnName = "is_active", converter = NumericBooleanConverter.class)
+@SoftDelete(columnName = "is_active", strategy = SoftDeleteType.ACTIVE, converter = NumericBooleanConverter.class)
 public class Product {
     // ...
 }
 ```
+
+Both columns come from a migration (`db-migrations`): `deleted BOOLEAN NOT NULL DEFAULT FALSE`, or `is_active INTEGER NOT NULL DEFAULT 1` for the converter.
 
 ### Record as DTO in Queries
 
@@ -392,13 +375,11 @@ public record ProductSummary(Long id, String name, BigDecimal price) {}
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-    @Query("SELECT new pl.piomin.services.dto.ProductSummary(p.id, p.name, p.price) " +
+    @Query("SELECT new com.example.dto.ProductSummary(p.id, p.name, p.price) " +
            "FROM Product p WHERE p.price > :minPrice")
     List<ProductSummary> findExpensiveProducts(@Param("minPrice") BigDecimal minPrice);
 }
 ```
-
----
 
 ## Query Best Practices
 
@@ -410,7 +391,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Page<User> findByActiveTrue(Pageable pageable);
 
-    Slice<User> findByRole(String role, Pageable pageable);  // No COUNT query
+    Slice<User> findByRolesName(String roleName, Pageable pageable);  // No COUNT query; roles → Role.name
 }
 
 // Usage
@@ -423,17 +404,15 @@ Page<User> page = userRepository.findByActiveTrue(
 
 ```java
 // Interface-based projection - fetches only declared fields
-public interface UserNameOnly {
-    String getFirstName();
-    String getLastName();
+public interface UserContact {
+    String getUsername();
+    String getEmail();
 }
 
 public interface UserRepository extends JpaRepository<User, Long> {
-    List<UserNameOnly> findAllByActiveTrue();
+    List<UserContact> findAllByActiveTrue();
 }
 ```
-
----
 
 ## Quick Decision Guide
 

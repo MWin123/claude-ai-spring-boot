@@ -1,37 +1,42 @@
-# Spring Boot Plugin for Claude Code (v1.0)
+# Spring Boot Template for Claude Code
 
-A Claude Code plugin with production-ready skills and agents for building Spring Boot 4.x / Java 21+ applications. Install the plugin and start generating your app — the skills and agents guide Claude to follow best practices for REST APIs, JPA, security, testing, cloud-native deployment, and Kubernetes.
+Production-ready skills and agents for building Spring Boot 4.x / Java 21+ applications with Claude Code. Copy them into your project and start generating your app — the skills and agents guide Claude to follow best practices for REST APIs, JPA, security, testing, cloud-native deployment, and Kubernetes.
 
 ## Installation
 
-```bash
-# Install from Anthropic marketplace
-claude plugin install spring-boot-template@piomin
-
-# Or install directly from repository
-claude plugin install --url https://github.com/piomin/claude-ai-spring-boot
-```
-
-To test locally during development:
+Run the setup script from a Spring Boot project that uses Maven or Gradle (it needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise, so create a new project first, e.g. with Spring Initializr). It copies `agents/`, `skills/` and `config/settings.json` into `.claude/` and `config/CLAUDE.md` into the project root. The project keeps its own `.gitignore` (Spring Initializr generates one):
 
 ```bash
-claude --plugin-dir /path/to/claude-ai-spring-boot
+cd my-project
+/path/to/claude-ai-spring-boot/setup.sh
 ```
+
+Or pass the project directory explicitly from anywhere:
+
+```bash
+/path/to/claude-ai-spring-boot/setup.sh /path/to/my-project
+```
+
+The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched.
+
+Claude Code loads `.claude/agents/` and `.claude/skills/` from the project automatically, and `CLAUDE.md` from the project root. Start `claude` in the project directory to use them. Started in a subdirectory, Claude Code treats the `conventions` import in `CLAUDE.md` as external: it asks once before loading it (`claude -p` skips it), and without it `CLAUDE.md` tells Claude to load the skill.
 
 ## What's Included
 
 ### Agents (`agents/`)
 
-Specialized agents that Claude Code can invoke for specific tasks:
+Subagents that Claude Code delegates to when a fresh context helps:
 
 | Agent | Purpose |
 |-------|---------|
-| `spring-boot-engineer` | Build Spring Boot 4.x apps with layered architecture |
-| `code-reviewer` | Review code for correctness, security, Spring Boot conventions |
-| `kubernetes-specialist` | K8s deployments, probes, ConfigMap/Secret, Prometheus, Skaffold |
-| `devops-engineer` | CI/CD pipelines, Paketo Buildpacks, Skaffold |
-| `docker-expert` | Multi-stage Dockerfiles, Paketo Buildpacks, image optimization |
-| `security-engineer` | Spring Security, OWASP, input validation, SSL Bundles |
+| `code-reviewer` | Thorough review of a finished feature or security audit: correctness, security, performance, design (use sparingly) |
+| `quick-reviewer` | Fast review of a single commit or file: mechanical checks only |
+| `tests` | Runs the test suite, returns only failing tests (max 20 lines) |
+| `docs-researcher` | Researches current, version-specific docs, release notes and GitHub issues; returns a short, sourced answer |
+
+The main agent does the development, migration and deployment work itself with the skills below; subagents run only where a fresh context pays off (noisy test output, independent review, web research).
+
+`docs-researcher` prefers the TinyFish and Firecrawl MCP servers, installed under the names `TinyFish` and `Firecrawl`, and falls back to the built-in WebSearch/WebFetch without them.
 
 ### Skills (`skills/`)
 
@@ -39,45 +44,57 @@ Reusable knowledge that Claude loads contextually:
 
 | Skill | What it teaches |
 |-------|-----------------|
-| `conventions` | Mandatory project rules: No Lombok, constructor injection, RestClient, testing standards |
-| `spring-boot` | Core Spring Boot development with 5 reference guides (web, data, security, cloud, testing) |
-| `code-quality` | Clean code principles, API contracts, null safety, exception handling |
+| `conventions` | Mandatory project rules, loaded with `CLAUDE.md`: records first, targeted Lombok, constructor injection, RestClient, testing standards |
+| `spring-boot` | Core Spring Boot development with 5 reference guides (web, data, security, cloud, Boot 4 changes) |
+| `code-quality` | Clean code principles and Java pitfalls (null safety, exceptions, transactions) for writing and refactoring |
 | `design-patterns` | Classic patterns (Factory, Builder, Strategy) + enterprise (Saga, Outbox, CQRS) |
-| `testing-patterns` | JUnit 5, Mockito, MockMvc, RestTestClient, Testcontainers with @ServiceConnection |
-| `java-modern` | Java 21+ features: records, sealed classes, pattern matching, virtual threads |
-| `jpa-patterns` | JPA/Hibernate pitfalls (N+1, lazy loading), Hibernate 6/7, optimistic locking |
+| `testing-patterns` | JUnit 5, Mockito, MockMvc, WebTestClient, RestTestClient, `@DataJpaTest` on H2 or Testcontainers with `@ServiceConnection` |
+| `java-modern` | Java 21+ features: records, Lombok rules, sealed classes, pattern matching, virtual threads |
+| `jpa-patterns` | JPA/Hibernate pitfalls (N+1, lazy loading), Hibernate 7, optimistic locking |
 | `logging-patterns` | Structured JSON logging, SLF4J, MDC, AI-friendly formats |
+| `db-migrations` | Liquibase (default) or Flyway schema migrations, kept consistent with JPA entities |
+| `boot-migration` | Upgrade existing Spring Boot 2.x/3.x projects to 4.x in verified steps (`/boot-migration 4.1`, or ask for the upgrade) |
+| `deployment` | Containers, Docker Compose and CI/CD, Kubernetes and Helm with 3 reference guides (containers, kubernetes, helm) |
+| `review-checklist` | What to flag in a Spring Boot review; preloaded by `code-reviewer` and `quick-reviewer`, hidden from the `/` menu |
 
 ### Key Conventions
 
-The plugin enforces these rules via the `conventions` skill:
+The `conventions` skill and the project `CLAUDE.md` (project name, package, build tool) enforce these rules:
 
-- **No Lombok** — explicit constructors, getters/setters, `LoggerFactory.getLogger()`
+- **Modern Java first, Lombok targeted** — records for DTOs and value types; Lombok only where a record can't replace the boilerplate, with the rules in the `java-modern` skill
 - **Constructor injection** — no `@Autowired` on fields
+- **Contract-first REST APIs** — a hand-written OpenAPI spec (`src/main/resources/static/openapi.yaml`) defines the endpoints; openapi-generator generates the controller interfaces and models at build time, and controllers implement them
+- **Swagger UI** — springdoc's webmvc or webflux UI starter, matching the project's web starter, added if missing (spec at `/openapi.yaml`, Swagger UI at `/swagger-ui.html`)
 - **RestClient** over RestTemplate/WebClient for blocking HTTP calls
 - **RestTestClient** with `@AutoConfigureRestTestClient` for integration tests
 - **Testcontainers** with `@ServiceConnection` (not `@DynamicPropertySource`)
 - **Jakarta Persistence** (not `javax.persistence`)
-- **Maven** with `pl.piomin.services` group ID
-- **CI pipeline** — auto-detected from existing project config
+- **Maven or Gradle** — detected once per session from `pom.xml` or `build.gradle(.kts)`/`settings.gradle(.kts)`; build and test commands, name, group and version follow the detected tool
+- **Project name and package** — base Java package = group ID; the project name (`artifactId` or Gradle `rootProject.name`) is the folder name in lowercase kebab-case, e.g. `MyApp` → `my-app` (an existing name is kept; asked about if it doesn't match)
+- **CI pipeline** — not generated unless asked; an existing setup is detected and extended
 - **Docker Compose** for local dependencies
 
 ### Cloud-Native Coverage
 
-The `cloud.md` reference covers:
+The `cloud.md` reference in the `spring-boot` skill covers:
 
 - Spring Cloud (Config Server, Eureka, Gateway, Resilience4j, LoadBalancer)
 - Distributed tracing with OpenTelemetry (OTLP) and Micrometer Observation API
+- Actuator health checks and Prometheus metrics
 - Virtual Threads, HTTP Interface Clients (`@HttpExchange`), GraalVM Native Image
-- Kubernetes: ConfigMap/Secret with `envFrom`, Prometheus annotations, startup/liveness/readiness probes, `preStop` hook, graceful shutdown
-- TLS: cert-manager (Ingress TLS + pod-level mTLS), SSL Bundles with hot reload
+
+The `deployment` skill covers:
+
+- Paketo Buildpacks via `spring-boot:build-image` (Maven) or `bootBuildImage` (Gradle), multi-stage Dockerfiles, Docker Compose, CI/CD pipelines
+- Kubernetes: ConfigMap/Secret with `envFrom`, Prometheus annotations, startup/liveness/readiness probes, `preStop` hook, graceful shutdown, NetworkPolicy, HPA/PDB
+- TLS: cert-manager (Ingress TLS + pod-level mTLS) for the SSL Bundles with hot reload in `security.md`
 - Config Tree for reading mounted secrets from files
-- Paketo Buildpacks via `spring-boot:build-image`
-- Skaffold for local K8s development loop
+- Helm charts (Deployment or StatefulSet, `helm test`, lint and verify)
+- Skaffold for the local K8s development loop, with `kubectl` or Helm
 
 ## Usage
 
-After installing, describe what you want to build — Claude will use the skills and agents automatically:
+After copying the files, describe what you want to build — Claude will use the skills and agents automatically. `CLAUDE.md` loads the `conventions` rules into every session, tells it to follow the `spring-boot` workflow for features, and to hand test runs, reviews and web research to the agents:
 
 ```bash
 cd my-project
@@ -85,52 +102,106 @@ claude
 > "Build a REST API for managing orders with PostgreSQL"
 ```
 
+### Example: a products API with the `spring-boot` skill
+
+```bash
+cd my-project
+claude
+> "Add a products API: list, search by name, create. PostgreSQL."
+```
+
+The `spring-boot` skill loads on its own and follows its workflow:
+
+1. **Spec first.** Claude writes `src/main/resources/static/openapi.yaml` with `/api/v1/products` and tells you which defaults it applied (validation, error responses). It adds the openapi-generator plugin and generates the `ProductsApi` interface and the `ProductRequest` / `ProductResponse` models.
+2. **Code against the contract.** It creates the `Product` entity, a repository, a Liquibase or Flyway migration (`db-migrations` skill), a mapper, a transactional service, and a controller that implements the generated interface:
+
+   ```java
+   @RestController
+   @RequiredArgsConstructor
+   public class ProductController implements ProductsApi {
+       private final ProductService service;
+
+       @Override
+       public ResponseEntity<ProductResponse> createProduct(ProductRequest request) {
+           return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request));
+       }
+   }
+   ```
+
+3. **Errors and config.** A `@RestControllerAdvice` returns Problem Details; `application.yml` gets virtual threads and graceful shutdown.
+4. **Tests and verification.** Unit, slice, repository and Testcontainers integration tests, each with positive and negative cases. The `tests` agent runs `./mvnw verify` (Gradle: `./gradlew build`) and reports only the failures; then Claude updates the README.
+
+To change the API later, edit the spec and rebuild; never edit the generated code.
+
 You can also invoke skills and agents directly:
 
 ```bash
 # Invoke a skill
-> /spring-boot-template:jpa-patterns
+> /jpa-patterns
+> /boot-migration 4.1
 
 # Use an agent
-> @agent-spring-boot-template:code-reviewer
+> @agent-code-reviewer
 ```
 
 ## Directory Structure
 
 ```
 .
-├── .claude-plugin/
-│   └── plugin.json
+├── .claude/settings.json   # Claude Code settings for working on this template
+├── .github/workflows/claude-files.yml
 ├── agents/
 │   ├── code-reviewer.md
-│   ├── devops-engineer.md
-│   ├── docker-expert.md
-│   ├── kubernetes-specialist.md
-│   ├── security-engineer.md
-│   └── spring-boot-engineer.md
+│   ├── docs-researcher.md
+│   ├── quick-reviewer.md
+│   └── tests.md
 ├── skills/
-│   ├── conventions/SKILL.md
+│   ├── boot-migration/SKILL.md
 │   ├── code-quality/SKILL.md
+│   ├── conventions/SKILL.md
+│   ├── db-migrations/SKILL.md
+│   ├── deployment/
+│   │   ├── SKILL.md
+│   │   └── references/
+│   │       ├── containers.md
+│   │       ├── helm.md
+│   │       └── kubernetes.md
 │   ├── design-patterns/SKILL.md
 │   ├── java-modern/SKILL.md
 │   ├── jpa-patterns/SKILL.md
 │   ├── logging-patterns/SKILL.md
+│   ├── review-checklist/SKILL.md
 │   ├── spring-boot/
 │   │   ├── SKILL.md
 │   │   └── references/
+│   │       ├── boot4.md
 │   │       ├── cloud.md
 │   │       ├── data.md
 │   │       ├── security.md
-│   │       ├── testing.md
 │   │       └── web.md
 │   └── testing-patterns/SKILL.md
+├── config/                 # copied into the project
+│   ├── CLAUDE.md           # project rules (root of the project)
+│   └── settings.json       # .claude/settings.json
+├── tests/                  # checks for this template, not copied by setup.sh
+├── CLAUDE.md               # rules for working on this template
 ├── README.md
+├── setup.sh
 └── LICENSE
+```
+
+## Tests
+
+The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior (including that the installed `CLAUDE.md`'s imports resolve), agent and skill frontmatter (only fields Claude Code knows, skill listing length, SKILL.md under 500 lines), references between files (sections, files, workflow steps, skill and agent names, reference files listed in their skill, every skill reachable and every agent routed from `CLAUDE.md`, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), the `tests` agent's commands (no marker file, nothing chained, a local start time), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
+
+```bash
+pip install -r tests/requirements.txt
+pytest tests
 ```
 
 ## Blog Post
 
-You can find a detailed explanation of this plugin in the post: [Claude Code Template for Spring Boot](https://piotrminkowski.com/2026/03/24/claude-code-template-for-spring-boot/).
+You can find a detailed explanation of this template in the post: [Claude Code Template for Spring Boot](https://piotrminkowski.com/2026/03/24/claude-code-template-for-spring-boot/).
 
 ## License
 

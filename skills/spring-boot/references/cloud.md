@@ -1,18 +1,42 @@
 # Cloud Native - Spring Cloud
 
+## Setup
+
+Spring Cloud starters take their versions from the `spring-cloud-dependencies` BOM, whose release train must match the Boot version: 2025.1.x for Boot 4.0 and 4.1. Initializr adds it with the first Spring Cloud starter.
+
+```xml
+<properties>
+    <spring-cloud.version>2025.1.4</spring-cloud.version>
+</properties>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-dependencies</artifactId>
+            <version>${spring-cloud.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
+Gradle: `implementation(platform("org.springframework.cloud:spring-cloud-dependencies:2025.1.4"))`.
+
 ## Spring Cloud Config Server
 
 ```java
-// Config Server
 @SpringBootApplication
-@EnableConfigServer
+@EnableConfigServer   // spring-cloud-config-server
 public class ConfigServerApplication {
     public static void main(String[] args) {
         SpringApplication.run(ConfigServerApplication.class, args);
     }
 }
+```
 
-// application.yml
+```yaml
+# application.yml (Config Server)
 server:
   port: 8888
 
@@ -27,16 +51,10 @@ spring:
           # credentials: configure via environment variables
         native:
           search-locations: classpath:/config
+```
 
-// Config Client
-@SpringBootApplication
-public class ClientApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(ClientApplication.class, args);
-    }
-}
-
-// application.yml (Config Client)
+```yaml
+# application.yml (Config Client, spring-cloud-starter-config)
 spring:
   application:
     name: user-service
@@ -54,32 +72,22 @@ spring:
 ## Dynamic Configuration Refresh
 
 ```java
-@RestController
-@RefreshScope
-public class ConfigController {
-    @Value("${app.feature.enabled:false}")
-    private boolean featureEnabled;
-
-    @Value("${app.max-connections:100}")
-    private int maxConnections;
-
-    @GetMapping("/config")
-    public Map<String, Object> getConfig() {
-        return Map.of(
-            "featureEnabled", featureEnabled,
-            "maxConnections", maxConnections
-        );
-    }
+@ConfigurationProperties("app.feature")   // registered by @ConfigurationPropertiesScan
+@Getter
+@Setter   // a refresh re-binds through the setters; a record keeps its startup values
+public class FeatureProperties {
+    private boolean enabled;
+    private int maxConnections = 100;
 }
 
-// Refresh configuration via Actuator endpoint:
-// POST /actuator/refresh
+// Inject FeatureProperties into services. POST /actuator/refresh (add refresh to
+// management.endpoints.web.exposure.include) re-binds it with the new values; no @RefreshScope needed
 ```
 
 ## Service Discovery - Eureka
 
 ```java
-// Eureka Server
+// Eureka Server (spring-cloud-starter-netflix-eureka-server)
 @SpringBootApplication
 @EnableEurekaServer
 public class EurekaServerApplication {
@@ -88,7 +96,18 @@ public class EurekaServerApplication {
     }
 }
 
-// application.yml (Eureka Server)
+// Eureka Client (spring-cloud-starter-netflix-eureka-client)
+@SpringBootApplication
+@EnableDiscoveryClient
+public class UserServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(UserServiceApplication.class, args);
+    }
+}
+```
+
+```yaml
+# application.yml (Eureka Server)
 server:
   port: 8761
 
@@ -100,17 +119,10 @@ eureka:
     fetch-registry: false
     service-url:
       defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+```
 
-// Eureka Client
-@SpringBootApplication
-@EnableDiscoveryClient
-public class UserServiceApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(UserServiceApplication.class, args);
-    }
-}
-
-// application.yml (Eureka Client)
+```yaml
+# application.yml (Eureka Client)
 spring:
   application:
     name: user-service
@@ -127,6 +139,8 @@ eureka:
 ```
 
 ## Spring Cloud Gateway
+
+`spring-cloud-starter-gateway-server-webflux`; the `circuitBreaker` filter needs `spring-cloud-starter-circuitbreaker-reactor-resilience4j`, `RedisRateLimiter` needs `spring-boot-starter-data-redis-reactive`.
 
 ```java
 @SpringBootApplication
@@ -180,89 +194,98 @@ public class GatewayApplication {
         ).defaultIfEmpty("anonymous");
     }
 }
+```
 
-// application.yml (Gateway)
+```yaml
+# application.yml (Gateway)
 spring:
   cloud:
     gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Origin
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowed-origins: "*"
-            allowed-methods:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-            allowed-headers: "*"
+      server:
+        webflux:
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Origin
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowed-origins: ${CORS_ALLOWED_ORIGINS}   # e.g. https://app.example.com; never "*"
+                allowed-methods: [GET, POST, PUT, DELETE]
+                allowed-headers: "*"
 ```
 
-## Circuit Breaker - Resilience4j
+## Circuit Breaker - Spring Cloud CircuitBreaker
+
+`spring-cloud-starter-circuitbreaker-resilience4j` (Initializr: "Resilience4J"). Resilience4j's own annotations (`@CircuitBreaker(name = …)`, `@Retry`, `@RateLimiter`) need `resilience4j-spring-boot3`, which refuses to start on Boot 4.
 
 ```java
 @Service
+@Slf4j
 public class ExternalApiService {
-    private static final Logger log = LoggerFactory.getLogger(ExternalApiService.class);
-
     private final RestClient restClient;
+    private final CircuitBreaker circuitBreaker;   // org.springframework.cloud.client.circuitbreaker
 
-    public ExternalApiService(RestClient.Builder builder) {
-        this.restClient = builder
-            .baseUrl("https://api.external.com")
-            .build();
+    public ExternalApiService(RestClient.Builder builder, CircuitBreakerFactory<?, ?> circuitBreakers) {
+        this.restClient = builder.baseUrl("https://api.external.com").build();
+        this.circuitBreaker = circuitBreakers.create("externalApi");   // settings: resilience4j.*.instances.externalApi
     }
 
-    @CircuitBreaker(name = "externalApi", fallbackMethod = "getFallbackData")
-    @Retry(name = "externalApi")
-    @RateLimiter(name = "externalApi")
     public ExternalData getData(String id) {
-        return restClient
-            .get()
-            .uri("/data/{id}", id)
-            .retrieve()
-            .body(ExternalData.class);
-    }
-
-    private ExternalData getFallbackData(String id, Exception e) {
-        log.warn("Fallback triggered for id: {}, error: {}", id, e.getMessage());
-        return new ExternalData(id, "Fallback data", LocalDateTime.now());
+        return circuitBreaker.run(
+            () -> restClient.get().uri("/data/{id}", id).retrieve().body(ExternalData.class),
+            e -> {   // failed call, timeout or open circuit
+                log.warn("Fallback triggered for id: {}, error: {}", id, e.getMessage());
+                return new ExternalData(id, "Fallback data", LocalDateTime.now());
+            });
     }
 }
+```
 
-// application.yml
+```yaml
+# application.yml
 resilience4j:
   circuitbreaker:
     instances:
       externalApi:
-        register-health-indicator: true
         sliding-window-size: 10
         minimum-number-of-calls: 5
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
         wait-duration-in-open-state: 5s
         failure-rate-threshold: 50
-        event-consumer-buffer-size: 10
-
-  retry:
+  timelimiter:
     instances:
       externalApi:
-        max-attempts: 3
-        wait-duration: 1s
-        enable-exponential-backoff: true
-        exponential-backoff-multiplier: 2
+        timeout-duration: 5s   # default 1s: slower calls count as failures
+spring:
+  cloud:
+    circuitbreaker:
+      http-services:
+        enabled: false   # else every @ImportHttpServices group gets a breaker with the 1 s default time limit
+```
 
-  ratelimiter:
-    instances:
-      externalApi:
-        limit-for-period: 10
-        limit-refresh-period: 1s
-        timeout-duration: 0s
+Retries and concurrency limits are built into Spring Framework 7, without a library:
+
+```java
+@Configuration
+@EnableResilientMethods
+class ResilienceConfig {
+}
+
+@Service
+@RequiredArgsConstructor
+public class InventoryClient {
+    private final InventoryApi inventoryApi;   // @HttpExchange client (boot4.md)
+
+    @Retryable(includes = ResourceAccessException.class, maxRetries = 3, delay = 1000, multiplier = 2)   // I/O errors, not 4xx
+    @ConcurrencyLimit(10)   // callers beyond 10 wait
+    public Stock getStock(String sku) {
+        return inventoryApi.getStock(sku);
+    }
+}
 ```
 
 ## Distributed Tracing - Micrometer + OpenTelemetry
@@ -275,51 +298,43 @@ management:
   tracing:
     sampling:
       probability: 1.0
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
-
-logging:
-  pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+      export:
+        otlp:
+          endpoint: http://localhost:4318/v1/traces
 ```
 
 ```xml
-<!-- pom.xml -->
+<!-- pom.xml: Micrometer Tracing with the OpenTelemetry bridge and the OTLP exporter -->
 <dependency>
-    <groupId>io.micrometer</groupId>
-    <artifactId>micrometer-tracing-bridge-otel</artifactId>
-</dependency>
-<dependency>
-    <groupId>io.opentelemetry</groupId>
-    <artifactId>opentelemetry-exporter-otlp</artifactId>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-opentelemetry</artifactId>
 </dependency>
 ```
 
 ### Zipkin Exporter (Alternative)
+
+`spring-boot-starter-zipkin` (Brave) instead of the OpenTelemetry starter:
 
 ```yaml
 management:
   tracing:
     sampling:
       probability: 1.0
-  zipkin:
-    tracing:
-      endpoint: http://localhost:9411/api/v2/spans
+    export:
+      zipkin:
+        endpoint: http://localhost:9411/api/v2/spans
 ```
 
 ### Custom Spans with Observation API
 
 ```java
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final ObservationRegistry observationRegistry;
     private final OrderRepository orderRepository;
-
-    public OrderService(ObservationRegistry observationRegistry, OrderRepository orderRepository) {
-        this.observationRegistry = observationRegistry;
-        this.orderRepository = orderRepository;
-    }
 
     public Order processOrder(OrderRequest request) {
         return Observation.createNotStarted("order.process", observationRegistry)
@@ -337,42 +352,28 @@ public class OrderService {
 ```java
 @Configuration
 @LoadBalancerClient(name = "user-service", configuration = UserServiceLoadBalancerConfig.class)
-public class LoadBalancerConfiguration {
+class LoadBalancerConfiguration {
 }
 
-@Configuration
-public class UserServiceLoadBalancerConfig {
+// No @Configuration: as a scanned bean it would apply to every client
+class UserServiceLoadBalancerConfig {
 
     @Bean
-    public ReactorLoadBalancer<ServiceInstance> randomLoadBalancer(
-            LoadBalancerClientFactory clientFactory,
-            ObjectProvider<LoadBalancerProperties> properties) {
-        return new RandomLoadBalancer(
-            clientFactory.getLazyProvider("user-service", ServiceInstanceListSupplier.class),
-            "user-service"
-        );
+    ReactorLoadBalancer<ServiceInstance> randomLoadBalancer(Environment environment,
+            LoadBalancerClientFactory clientFactory) {
+        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);   // "user-service"
+        return new RandomLoadBalancer(clientFactory.getLazyProvider(name, ServiceInstanceListSupplier.class), name);
     }
 }
 
-@Service
-public class UserClientService {
-    private final RestClient restClient;
-
-    public UserClientService(RestClient.Builder builder) {
-        this.restClient = builder
-            .baseUrl("http://user-service")
-            .build();
-    }
-
-    public User getUser(Long id) {
-        return restClient
-            .get()
-            .uri("/users/{id}", id)
-            .retrieve()
-            .body(User.class);
-    }
+// Without a base-url, a group gets http://<group name> and is load-balanced
+@Configuration
+@ImportHttpServices(group = "user-service", types = UserClient.class)
+class UserClientConfig {
 }
 ```
+
+`UserClient` is the `@HttpExchange` interface from `boot4.md`. A hand-built `RestClient` resolves `http://user-service` only through a `@LoadBalanced RestClient.Builder` bean.
 
 ## Health Checks, Actuator & Prometheus
 
@@ -434,219 +435,6 @@ public class CustomHealthIndicator implements HealthIndicator {
 }
 ```
 
-## Kubernetes Deployment
-
-### ConfigMap and Secret
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: user-service-config
-data:
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-service:5432/mydb"
-  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
-  SERVER_SHUTDOWN: "graceful"
-```
-
-Configure datasource credentials via Kubernetes Secrets mounted as environment variables or using Config Tree (see below).
-
-### Config Tree for Mounted Secrets
-
-Instead of env vars, read secrets from mounted files using Config Tree (more secure — secrets don't leak via `/proc/environ`):
-
-```yaml
-# application.yml
-spring:
-  config:
-    import: "optional:configtree:/run/secrets/"
-```
-
-With a Kubernetes Secret mounted at `/run/secrets/`, each key becomes a file. Spring Boot reads the file content as the property value.
-
-```yaml
-# Kubernetes volume mount for Config Tree
-spec:
-  containers:
-  - name: app
-    volumeMounts:
-    - name: secrets
-      mountPath: /run/secrets
-      readOnly: true
-  volumes:
-  - name: secrets
-    secret:
-      secretName: user-service-secrets
-```
-
-### Deployment Manifest
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: user-service
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: user-service
-  template:
-    metadata:
-      labels:
-        app: user-service
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/actuator/prometheus"
-    spec:
-      containers:
-      - name: user-service
-        image: user-service:1.0.0
-        ports:
-        - containerPort: 8080
-        envFrom:
-        - configMapRef:
-            name: user-service-config
-        - secretRef:
-            name: user-service-secrets
-        env:
-        - name: SPRING_PROFILES_ACTIVE
-          value: "kubernetes"
-        - name: JAVA_TOOL_OPTIONS
-          value: "-XX:MaxRAMPercentage=75.0"
-        livenessProbe:
-          httpGet:
-            path: /actuator/health/liveness
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /actuator/health/readiness
-            port: 8080
-          initialDelaySeconds: 15
-          periodSeconds: 5
-        startupProbe:
-          httpGet:
-            path: /actuator/health/liveness
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          failureThreshold: 20
-        lifecycle:
-          preStop:
-            exec:
-              command: ["sh", "-c", "sleep 10"]
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: user-service
-spec:
-  selector:
-    app: user-service
-  ports:
-  - port: 80
-    targetPort: 8080
-  type: ClusterIP
-```
-
-### Ingress TLS with cert-manager
-
-cert-manager automatically provisions and renews TLS certificates on Kubernetes.
-
-```yaml
-# ClusterIssuer for Let's Encrypt
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@example.com
-    privateKeySecretRef:
-      name: letsencrypt-prod-key
-    solvers:
-    - http01:
-        ingress:
-          class: nginx
-```
-
-```yaml
-# Ingress with automatic TLS
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: user-service-ingress
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-spec:
-  ingressClassName: nginx
-  tls:
-  - hosts:
-    - api.example.com
-    secretName: user-service-tls
-  rules:
-  - host: api.example.com
-    http:
-      paths:
-      - path: /api/users
-        pathType: Prefix
-        backend:
-          service:
-            name: user-service
-            port:
-              number: 80
-```
-
-cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see security reference).
-
-### Certificate for mTLS between services
-
-```yaml
-# cert-manager Certificate for pod-level TLS
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: user-service-cert
-spec:
-  secretName: user-service-tls-pod
-  issuerRef:
-    name: internal-ca
-    kind: ClusterIssuer
-  dnsNames:
-  - user-service
-  - user-service.default.svc.cluster.local
-  duration: 720h
-  renewBefore: 48h
-```
-
-```yaml
-# Mount into pod for Spring Boot SSL Bundle
-spec:
-  containers:
-  - name: user-service
-    volumeMounts:
-    - name: tls-certs
-      mountPath: /etc/ssl/certs
-      readOnly: true
-  volumes:
-  - name: tls-certs
-    secret:
-      secretName: user-service-tls-pod
-```
-
 ## Virtual Threads
 
 ```yaml
@@ -665,49 +453,14 @@ Virtual threads eliminate the need for WebFlux in most cases. With `spring.threa
 
 **When to still use WebFlux:** streaming responses, SSE, WebSocket, or when you need backpressure.
 
-## HTTP Interface Clients (Spring 6+)
+## HTTP Interface Clients
 
-```java
-// Declarative HTTP client - replaces OpenFeign
-public interface UserClient {
-
-    @GetExchange("/users/{id}")
-    UserResponse getUser(@PathVariable Long id);
-
-    @GetExchange("/users")
-    List<UserResponse> getAllUsers();
-
-    @PostExchange("/users")
-    UserResponse createUser(@RequestBody UserCreateRequest request);
-}
-
-// Configuration
-@Configuration
-public class ClientConfig {
-
-    @Bean
-    public UserClient userClient(RestClient.Builder builder) {
-        RestClient restClient = builder
-            .baseUrl("http://user-service")
-            .build();
-        return HttpServiceProxyFactory
-            .builderFor(RestClientAdapter.create(restClient))
-            .build()
-            .createClient(UserClient.class);
-    }
-}
-```
+Declarative clients (`@HttpExchange` interfaces registered with `@ImportHttpServices`, no `HttpServiceProxyFactory`) are in "Declarative HTTP Clients: @ImportHttpServices" in `boot4.md`; load-balanced groups are in "Load Balancing with Spring Cloud LoadBalancer" above.
 
 ## GraalVM Native Image
 
 ```xml
-<!-- pom.xml - add native profile support -->
-<parent>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-parent</artifactId>
-    <version>4.1.0</version>
-</parent>
-
+<!-- pom.xml: the Boot parent already has the native profile; add the plugin -->
 <plugin>
     <groupId>org.graalvm.buildtools</groupId>
     <artifactId>native-maven-plugin</artifactId>
@@ -722,130 +475,9 @@ public class ClientConfig {
 ./mvnw -Pnative spring-boot:build-image
 ```
 
+Gradle: apply the `org.graalvm.buildtools.native` plugin next to `org.springframework.boot`, then `./gradlew nativeCompile` builds the native executable and `./gradlew bootBuildImage` a native image.
+
 Benefits: ~50ms startup, ~50MB RSS memory. Trade-offs: longer build time, reflection requires hints.
-
-## Graceful Shutdown
-
-```yaml
-# application.yml - required for zero-downtime K8s rolling updates
-server:
-  shutdown: graceful
-
-spring:
-  lifecycle:
-    timeout-per-shutdown-phase: 30s
-```
-
-```yaml
-# Kubernetes - add preStop hook to allow deregistration
-spec:
-  containers:
-  - name: app
-    lifecycle:
-      preStop:
-        exec:
-          command: ["sh", "-c", "sleep 10"]
-```
-
-## Docker Configuration
-
-### Multi-stage Build
-
-```dockerfile
-FROM eclipse-temurin:21-jdk-alpine AS build
-WORKDIR /workspace/app
-
-COPY mvnw .
-COPY .mvn .mvn
-COPY pom.xml .
-RUN ./mvnw dependency:go-offline -B
-
-COPY src src
-RUN ./mvnw package -DskipTests
-
-FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S app -G app && apk add --no-cache curl
-WORKDIR /app
-COPY --from=build /workspace/app/target/*.jar app.jar
-USER app
-HEALTHCHECK --interval=30s --timeout=3s CMD curl -sf http://localhost:8080/actuator/health || exit 1
-ENTRYPOINT ["java", "-jar", "app.jar"]
-```
-
-### Paketo Buildpacks (Recommended)
-
-Paketo Buildpacks build OCI images without a Dockerfile. Integrated into Spring Boot Maven plugin.
-
-```bash
-# Build image (uses Paketo by default)
-./mvnw spring-boot:build-image \
-  -Dspring-boot.build-image.imageName=myapp:1.0.0
-
-# Build native image with Paketo
-./mvnw -Pnative spring-boot:build-image \
-  -Dspring-boot.build-image.imageName=myapp:1.0.0-native
-```
-
-```xml
-<!-- pom.xml - Paketo configuration -->
-<plugin>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-maven-plugin</artifactId>
-    <configuration>
-        <image>
-            <name>${project.artifactId}:${project.version}</name>
-            <env>
-                <BP_JVM_VERSION>21</BP_JVM_VERSION>
-                <BPE_JAVA_TOOL_OPTIONS>-XX:MaxRAMPercentage=75.0</BPE_JAVA_TOOL_OPTIONS>
-            </env>
-        </image>
-    </configuration>
-</plugin>
-```
-
-Advantages over Dockerfile:
-- Reproducible builds, no Dockerfile to maintain
-- Automatic security patching of base image layers
-- Optimized layering (dependencies cached separately from app code)
-- Supported by Spring Boot Maven plugin out of the box
-
-## Local K8s Development with Skaffold
-
-Skaffold automates the build → push → deploy loop.
-
-```yaml
-# skaffold.yaml
-apiVersion: skaffold/v4beta11
-kind: Config
-metadata:
-  name: user-service
-build:
-  artifacts:
-  - image: user-service
-    custom:
-      buildCommand: |
-        ./mvnw spring-boot:build-image \
-          -Dspring-boot.build-image.imageName=$IMAGE -q
-      dependencies:
-        paths:
-        - src/**
-        - pom.xml
-deploy:
-  kubectl:
-    manifests:
-    - k8s/*.yaml
-```
-
-```bash
-# Continuous development - rebuild and redeploy on code changes
-skaffold dev
-
-# One-time build + deploy
-skaffold run
-
-# Deploy to specific profile/environment
-skaffold run -p production
-```
 
 ## Quick Reference
 
@@ -854,16 +486,13 @@ skaffold run -p production
 | **Config Server** | Centralized configuration management |
 | **Eureka** | Service discovery and registration |
 | **Gateway** | API gateway with routing, filtering, load balancing |
-| **Circuit Breaker** | Fault tolerance and fallback patterns |
+| **Circuit Breaker** | Fault tolerance and fallbacks (Spring Cloud CircuitBreaker); retries and limits in Spring Framework 7 |
 | **Load Balancer** | Client-side load balancing |
 | **Tracing (OTLP)** | Distributed tracing with OpenTelemetry |
 | **Actuator** | Production-ready monitoring and management |
 | **Virtual Threads** | High-throughput blocking I/O without WebFlux |
 | **HTTP Interfaces** | Declarative HTTP clients (replaces Feign) |
 | **Native Image** | Fast startup, low memory with GraalVM |
-| **Paketo Buildpacks** | Build OCI images without Dockerfile (Spring Boot plugin) |
-| **Skaffold** | Local Kubernetes development loop (build → deploy → watch) |
-| **Config Tree** | Read secrets from mounted files instead of env vars |
-| **cert-manager** | Automatic TLS certificate provisioning and renewal on K8s |
 | **SSL Bundles** | Unified SSL config with hot reload (see security reference) |
-| **Kubernetes** | Container orchestration, ConfigMap/Secret, probes, Prometheus |
+
+Container images, Kubernetes manifests (including Config Tree and cert-manager), Helm charts and Skaffold are in the `deployment` skill.
