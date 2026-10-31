@@ -320,9 +320,12 @@ public class AuthenticationService {
 
 ## Method Security
 
+`@EnableMethodSecurity` turns on `@PreAuthorize`/`@PostAuthorize`; ownership checks go through a bean, since the principal (`UserDetails`) has no id:
+
 ```java
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class UserService {
     private final UserRepository userRepository;
 
@@ -331,23 +334,39 @@ public class UserService {
         return userRepository.findAll();
     }
 
-    @PreAuthorize("hasRole('ADMIN') or #userId == authentication.principal.id")
+    @PreAuthorize("hasRole('ADMIN') or @userAccess.isSelf(#userId, authentication.name)")
     public User getUserById(Long userId) {
         return userRepository.findById(userId)
             .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
-    @PreAuthorize("isAuthenticated()")
-    @PostAuthorize("returnObject.email == authentication.principal.username")
+    // Checked before the write: a @PostAuthorize denial comes after save() and, without a rollback, keeps the change
+    @Transactional
+    @PreAuthorize("hasRole('ADMIN') or @userAccess.isSelf(#userId, authentication.name)")
     public User updateProfile(Long userId, UserUpdateRequest request) {
-        User user = getUserById(userId);
-        // Update logic
+        User user = userRepository.findById(userId)   // not getUserById(): a self-call skips its @PreAuthorize
+            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        user.setUsername(request.getUsername());
         return userRepository.save(user);
     }
 
-    @Secured({"ROLE_ADMIN", "ROLE_MANAGER"})
+    @Transactional
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")   // @Secured is ignored unless @EnableMethodSecurity(securedEnabled = true)
     public void deleteUser(Long userId) {
         userRepository.deleteById(userId);
+    }
+}
+
+@Component("userAccess")
+@RequiredArgsConstructor
+public class UserAccess {
+    private final UserRepository userRepository;
+
+    // The username is the email (CustomUserDetailsService)
+    public boolean isSelf(Long userId, String username) {
+        return userRepository.findById(userId)
+            .map(user -> user.getEmail().equals(username))
+            .orElse(false);
     }
 }
 ```
@@ -433,8 +452,7 @@ When `reload-on-update: true` is set, Spring Boot watches the certificate files 
 | `@EnableWebSecurity` | Enables Spring Security |
 | `@EnableMethodSecurity` | Enables method-level security annotations |
 | `@PreAuthorize` | Checks authorization before method execution |
-| `@PostAuthorize` | Checks authorization after method execution |
-| `@Secured` | Role-based method security |
+| `@PostAuthorize` | Checks the return value after execution; on a write, only `@Transactional` rolls a denial back |
 | `@WithMockUser` | Mock authenticated user in tests |
 | `@AuthenticationPrincipal` | Inject current user in controller |
 
