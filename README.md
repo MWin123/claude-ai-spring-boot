@@ -192,7 +192,7 @@ You can also invoke skills and agents directly:
 
 ## Tests
 
-The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior, agent and skill frontmatter (only fields Claude Code knows, skill listing length, SKILL.md under 500 lines), references between files (sections, files, workflow steps, skill and agent names, reference files listed in their skill, every skill reachable and every agent routed from `CLAUDE.md`, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
+The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior, agent and skill frontmatter (only fields Claude Code knows, skill listing length, SKILL.md under 500 lines), references between files (sections, files, workflow steps, skill and agent names, reference files listed in their skill, every skill reachable and every agent routed from `CLAUDE.md`, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), the `tests` agent's commands (no marker file, nothing chained, a local start time), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
 
 ```bash
 pip install -r tests/requirements.txt

@@ -5,7 +5,7 @@ import re
 import pytest
 import yaml
 
-from helpers import CLAUDE_FILES, code_blocks, rel
+from helpers import CLAUDE_FILES, ROOT, code_blocks, code_blocks_blanked, rel
 
 # Recommended code must not contain these.
 BANNED = {
@@ -146,3 +146,24 @@ def test_exception_handlers_return_problem_details(path):
                 if not re.match(r"\s*(public|protected)\s+ProblemDetail\s", method):
                     wrong.append(f"line {block.line + n}: {method.strip()}")
     assert not wrong, "\n".join(wrong)
+
+
+# Besides the build, the tests agent runs only commands Claude Code allows without a permission rule
+TESTS_AGENT_BANNED = {
+    r"\b(?:mkdir|touch)\b": "no marker file: the start time comes from date",
+    r"\s-l\s": "Maven ignores -l while target/ is missing",
+    r"&&|;|\|": "chained or piped commands don't match permission rules",
+    r"\bdate\b.*\s-u\b": "find -newermt reads the start time as local time",
+    r"%dT%H": "BSD find (macOS) reads the T as a military time zone",
+}
+
+
+def test_tests_agent_commands_need_no_permission_rules():
+    text = code_blocks_blanked((ROOT / "agents" / "tests.md").read_text())
+    found = [
+        f"`{span}`: {reason}"
+        for span in re.findall(r"`([^`\n]+)`", text)
+        for pattern, reason in TESTS_AGENT_BANNED.items()
+        if re.search(pattern, span)
+    ]
+    assert not found, "\n".join(found)
