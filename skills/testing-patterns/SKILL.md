@@ -124,18 +124,17 @@ class OrderServiceTest {
 
 ```java
 @WebMvcTest(ProductController.class)
-@Import(SecurityConfig.class)   // assumes it restricts POST to ADMIN and keeps CSRF on (security.md)
+@Import(SecurityConfig.class)   // restricts POST to ADMIN and keeps CSRF on for requests without a bearer token (security.md)
 class ProductControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockitoBean
-    private ProductService productService;
+    @Autowired private MockMvc mockMvc;
+    @MockitoBean private ProductService productService;
+    // SecurityConfig's resource server needs both; @WithMockUser authenticates without a token
+    @MockitoBean private JwtDecoder jwtDecoder;
+    @MockitoBean private UserDetailsService userDetailsService;
 
     // Jackson 3: tools.jackson.databind.json.JsonMapper (not com.fasterxml.jackson.databind)
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
     // ✅ Positive - successful creation (ProductRequest/ProductResponse are the generated models)
     @Test
@@ -348,7 +347,7 @@ Neither example needs `@AutoConfigureTestDatabase`. The `test` profile sets `spr
 @AutoConfigureRestTestClient   // bound to MockMvc when it is present
 @ActiveProfiles("testcontainers")
 @Import(TestcontainersConfig.class)
-@WithMockUser(roles = "ADMIN")   // POST requires ADMIN and CSRF stays on (security.md); 403 cases are in the slice test
+@WithMockUser(roles = "ADMIN")   // POST requires ADMIN, and CSRF applies without a bearer token (security.md); 403 cases are in the slice test
 class ProductIntegrationTest {
 
     @Autowired

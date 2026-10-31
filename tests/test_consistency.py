@@ -19,7 +19,7 @@ def docs_matchers():
 
 def test_security_examples_permit_the_same_docs_paths():
     found = docs_matchers()
-    assert len(found) >= 3, f"expected the matchers in web.md and both security.md configs, found {list(found)}"
+    assert len(found) >= 2, f"expected the matchers in web.md and security.md, found {list(found)}"
     assert len({tuple(paths) for paths in found.values()}) == 1, found
 
 
