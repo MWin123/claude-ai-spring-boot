@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: "Use sparingly, once per finished feature or multi-file change (not after every edit or commit), for a thorough review of a Spring Boot diff: correctness, security, performance and design. Also for a security audit of the whole app. For a single commit or file, use quick-reviewer. Reports findings by severity; never edits code."
-tools: Read, Bash, Glob, Grep, Skill
+tools: Read, Bash, Glob, Grep
 skills:
   - review-checklist
   - conventions
