@@ -6,7 +6,7 @@ user-invocable: false
 
 # Review Checklist
 
-Two sections. The quick review runs **Mechanical** only; the full feature review runs **Mechanical** and **Deep**. This list says what to flag, not how to write code. The rules themselves are in the `conventions` skill (preloaded with this one), the Lombok rules in `.claude/skills/java-modern/SKILL.md` (section "Boilerplate: Modern Java First, Lombok Targeted") and the Boot 4 changes in `.claude/skills/spring-boot/references/boot4.md`; Read those files only when the change touches them.
+Two sections. The quick review runs **Mechanical** only; the full feature review runs **Mechanical** and **Deep**. This list says what to flag, not how to write code. The rules themselves are in the `conventions` skill (loaded with `CLAUDE.md`), the Lombok rules in `.claude/skills/java-modern/SKILL.md` (section "Boilerplate: Modern Java First, Lombok Targeted") and the Boot 4 changes in `.claude/skills/spring-boot/references/boot4.md`; Read those files only when the change touches them.
 
 ## Mechanical
 

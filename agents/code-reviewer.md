@@ -4,7 +4,6 @@ description: "Use sparingly, once per finished feature or multi-file change (not
 tools: Read, Bash, Glob, Grep
 skills:
   - review-checklist
-  - conventions
 model: opus
 effort: high
 color: red
@@ -18,7 +17,7 @@ This is a thorough, expensive review meant to run sparingly: once per finished f
 
 ## Review Process
 
-1. The `review-checklist` and `conventions` skills are preloaded; if one is missing, Read `.claude/skills/review-checklist/SKILL.md` or `.claude/skills/conventions/SKILL.md`.
+1. The `review-checklist` skill is preloaded and the `conventions` rules come with `CLAUDE.md`; if one is missing, Read `.claude/skills/review-checklist/SKILL.md` or `.claude/skills/conventions/SKILL.md`.
 2. Read the changes (`git diff <base>...HEAD`, or the files you were given; for a security audit, the security-related code) and enough surrounding code to judge them. `<base>` is the branch you were told, else the default branch from `git symbolic-ref --short refs/remotes/origin/HEAD` (e.g. `origin/main`); if that fails, ask.
 3. Run both the **Mechanical** and **Deep** sections of the checklist.
 4. Report findings grouped by severity: Critical > Important > Code Smell > Good

@@ -1,12 +1,17 @@
 """setup.sh copies agents, skills and config/ (settings.json, CLAUDE.md) into a project, and nothing else."""
 import filecmp
+import os
+import re
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from helpers import CONFIG, ROOT
+from helpers import CONFIG, ROOT, code_blocks_blanked
 
 SETUP = ROOT / "setup.sh"
+IMPORT = re.compile(r"(?:^|\s)@((?:[^\s\\]|\\ )+)")  # Claude Code's own pattern for CLAUDE.md imports
+MAX_HOPS = 4
 
 
 def run_setup(*args, cwd=None):
@@ -131,3 +136,29 @@ def test_no_backup_for_an_identical_claude_md(project):
 
     assert result.returncode == 0, result.stderr
     assert not list(project.glob("CLAUDE.md*.bak"))
+
+
+def imports(path):
+    """The files a memory file imports, parsed as Claude Code does: `@path` outside frontmatter and code, relative to the file."""
+    text = re.sub(r"\A---\n.*?\n---\n", "", path.read_text(), flags=re.S)
+    text = re.sub(r"`[^`\n]*`", " ", code_blocks_blanked(text))
+    for m in IMPORT.finditer(text):
+        name = m.group(1).split("#", 1)[0].replace("\\ ", " ")
+        if re.match(r"~/|/.|[a-zA-Z0-9._-]", name):  # what Claude Code accepts as a path
+            yield name, Path(os.path.normpath(path.parent / Path(name).expanduser()))
+
+
+def test_claude_md_imports_resolve(project):
+    """Every import in the installed CLAUDE.md, and in the files it imports, is a file setup.sh installed."""
+    assert run_setup(project).returncode == 0
+    loaded, missing, todo = set(), [], [(project / "CLAUDE.md", 0)]
+    while todo:
+        path, hops = todo.pop()
+        for name, target in imports(path) if hops < MAX_HOPS else ():
+            if not target.is_file():
+                missing.append(f"{path.relative_to(project)}: @{name}")
+            elif target not in loaded:
+                loaded.add(target)
+                todo.append((target, hops + 1))
+    assert not missing, "\n".join(missing)
+    assert project / ".claude" / "skills" / "conventions" / "SKILL.md" in loaded, "CLAUDE.md must import conventions"

@@ -5,7 +5,7 @@
 - Make the simplest change that works; find root causes, no temporary fixes. For non-trivial changes look for the more elegant solution, but don't overengineer.
 
 ## Skills
-- Load the `conventions` skill before writing or reviewing code; its rules apply to all code in this project.
+- The `conventions` skill holds the rules for all code in this project and loads with this file; if its rules aren't in your context, load the skill before writing or reviewing code: @.claude/skills/conventions/SKILL.md
 - Features, endpoints and entities follow the Core Workflow of the `spring-boot` skill. Schema changes: `db-migrations`. Images, Compose, CI, Kubernetes and Helm: `deployment`. Tests: `testing-patterns`. Upgrades to Boot 4: `boot-migration`.
 - Other skills: `java-modern` for modern Java features, `jpa-patterns` for fetching and N+1 problems, `logging-patterns` for structured logs and MDC, `design-patterns` for Outbox, Saga, CQRS and the classic patterns, `code-quality` for clean-code rules.
 - Skills live in `.claude/skills/<skill>/`, their reference files in `.claude/skills/<skill>/references/`; "`web.md` in the `spring-boot` skill" is `.claude/skills/spring-boot/references/web.md`. Read a single reference directly when only it is needed.

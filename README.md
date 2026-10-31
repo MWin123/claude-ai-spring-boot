@@ -19,7 +19,7 @@ Or pass the project directory explicitly from anywhere:
 
 The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched.
 
-Claude Code loads `.claude/agents/` and `.claude/skills/` from the project automatically, and `CLAUDE.md` from the project root. Start `claude` in the project directory to use them.
+Claude Code loads `.claude/agents/` and `.claude/skills/` from the project automatically, and `CLAUDE.md` from the project root. Start `claude` in the project directory to use them. Started in a subdirectory, Claude Code treats the `conventions` import in `CLAUDE.md` as external: it asks once before loading it (`claude -p` skips it), and without it `CLAUDE.md` tells Claude to load the skill.
 
 ## What's Included
 
@@ -44,7 +44,7 @@ Reusable knowledge that Claude loads contextually:
 
 | Skill | What it teaches |
 |-------|-----------------|
-| `conventions` | Mandatory project rules: records first, targeted Lombok, constructor injection, RestClient, testing standards |
+| `conventions` | Mandatory project rules, loaded with `CLAUDE.md`: records first, targeted Lombok, constructor injection, RestClient, testing standards |
 | `spring-boot` | Core Spring Boot development with 5 reference guides (web, data, security, cloud, Boot 4 changes) |
 | `code-quality` | Clean code principles and Java pitfalls (null safety, exceptions, transactions) for writing and refactoring |
 | `design-patterns` | Classic patterns (Factory, Builder, Strategy) + enterprise (Saga, Outbox, CQRS) |
@@ -94,7 +94,7 @@ The `deployment` skill covers:
 
 ## Usage
 
-After copying the files, describe what you want to build — Claude will use the skills and agents automatically. `CLAUDE.md` tells it to load `conventions` before writing code, to follow the `spring-boot` workflow for features, and to hand test runs, reviews and web research to the agents:
+After copying the files, describe what you want to build — Claude will use the skills and agents automatically. `CLAUDE.md` loads the `conventions` rules into every session, tells it to follow the `spring-boot` workflow for features, and to hand test runs, reviews and web research to the agents:
 
 ```bash
 cd my-project
@@ -192,7 +192,7 @@ You can also invoke skills and agents directly:
 
 ## Tests
 
-The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior, agent and skill frontmatter (only fields Claude Code knows, skill listing length, SKILL.md under 500 lines), references between files (sections, files, workflow steps, skill and agent names, reference files listed in their skill, every skill reachable and every agent routed from `CLAUDE.md`, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), the `tests` agent's commands (no marker file, nothing chained, a local start time), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
+The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior (including that the installed `CLAUDE.md`'s imports resolve), agent and skill frontmatter (only fields Claude Code knows, skill listing length, SKILL.md under 500 lines), references between files (sections, files, workflow steps, skill and agent names, reference files listed in their skill, every skill reachable and every agent routed from `CLAUDE.md`, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), the `tests` agent's commands (no marker file, nothing chained, a local start time), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
 
 ```bash
 pip install -r tests/requirements.txt
