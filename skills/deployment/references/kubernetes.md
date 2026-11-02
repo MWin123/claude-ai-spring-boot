@@ -197,9 +197,20 @@ spec:
               number: 80
 ```
 
-This Ingress routes only `/api/users`. If the service exposes its OpenAPI spec and Swagger UI (springdoc), serve them under that prefix (`/api/users/openapi.yaml`, `/api/users/swagger-ui.html`) so this rule covers them; see "Behind a Kubernetes Ingress" in `web.md`.
+This Ingress routes only `/api/users`. If the service exposes its OpenAPI spec and Swagger UI (springdoc), serve them under that prefix (`/api/users/openapi.yaml`, `/api/users/swagger-ui.html`) so this rule covers them; see "Behind a Kubernetes Ingress" in `swagger-ui.md`.
 
-cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see `security.md` in the `spring-boot` skill).
+cert-manager creates and renews the `user-service-tls` Secret automatically. For end-to-end TLS (not just ingress termination), mount the same Secret into the pod and configure Spring Boot SSL Bundles with `reload-on-update: true` (see `security.md` in the `spring-boot` skill). That moves the app to HTTPS on 8443, so keep Actuator on plain HTTP 8080 for the probes, the Prometheus annotation and the Dockerfile `HEALTHCHECK`:
+
+```yaml
+# application.yml, next to the SSL bundle
+management:
+  server:
+    port: 8080      # the probes and prometheus.io/port stay on 8080; the Service doesn't route it
+    ssl:
+      enabled: false
+```
+
+Then add `containerPort: 8443` to the Deployment and set the Service's `targetPort: 8443`. In the Helm chart, `service.targetPort` becomes 8443, so the probes and the Prometheus annotation need their own management port value instead of `http`.
 
 ## Certificate for mTLS between services
 
@@ -306,7 +317,7 @@ skaffold run -p production
 ### Networking
 - `ClusterIP` Service for internal communication
 - Ingress for external HTTP traffic with TLS termination
-- OpenAPI docs (springdoc): the Ingress must route the docs paths. With one host per service and path `/` that happens automatically. With a shared host and a path prefix per service, the app serves the docs under its prefix (`/api/users/openapi.yaml`, `/api/users/swagger-ui.html`; see `web.md` in the `spring-boot` skill), so the prefix rule covers them. Do not add separate `/openapi.yaml`, `/v3/api-docs` or `/swagger-ui` rules on a shared host, because each service would claim them
+- OpenAPI docs (springdoc): the Ingress must route the docs paths. With one host per service and path `/` that happens automatically. With a shared host and a path prefix per service, the app serves the docs under its prefix (`/api/users/openapi.yaml`, `/api/users/swagger-ui.html`; see `swagger-ui.md` in the `spring-boot` skill), so the prefix rule covers them. Do not add separate `/openapi.yaml`, `/v3/api-docs` or `/swagger-ui` rules on a shared host, because each service would claim them
 - Forwarded headers need no setting: Spring Boot detects Kubernetes and applies `server.forward-headers-strategy=native`. The spec has no `servers` entry, so Swagger UI calls the public host it was loaded from
 - `NetworkPolicy` to restrict pod-to-pod traffic
 

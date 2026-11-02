@@ -46,11 +46,12 @@ class HttpClientConfig { }
 ```
 
 ```properties
-spring.http.serviceclient.userApi.base-url=https://api.example.com
+# USER_API_BASE_URL, e.g. https://api.example.com; unset, the app starts and every call fails
+spring.http.serviceclient.userApi.base-url=${USER_API_BASE_URL}
 ```
 
 ## API Versioning
-Versions are declared on mappings and resolved from header, path, or media-type parameter (configurable). Contract-first APIs have no hand-written mappings and version through the spec path (`/api/v1/...`, see the "Spec Design Checklist" in `web.md`); this applies to existing hand-written controllers.
+Versions are declared on mappings and resolved from header, path, or media-type parameter (configurable). Contract-first APIs have no hand-written mappings and version through the spec path (`/api/v1/...`, see the "Spec Design Checklist" in `openapi.md`); this applies to existing hand-written controllers.
 
 ```properties
 spring.mvc.apiversion.use.header=API-Version
@@ -76,12 +77,5 @@ UserV2 getV2(@PathVariable Long id) { ... }
 package com.example.user;
 ```
 
-## Migration Checklist
-Have the `tests` agent run the build with all tests (`./mvnw verify`, Gradle: `./gradlew build`) after each step. Gradle builds need Gradle 8.14+ or 9.x.
-1. On Boot 3.5 (go there first if lower; from Boot 2 that hop includes `javax.*` -> `jakarta.*`): replace `@MockBean`/`@SpyBean` with `@MockitoBean`/`@MockitoSpyBean` (available since 3.4). Boot 4 removes the old annotations, so tests would not compile after the parent bump.
-2. Bump the parent/BOM (Gradle: the `org.springframework.boot` plugin) to 4.x and Java to 21+.
-3. Replace classic starters with modular ones and add `-test` starters, plus `spring-boot-starter-restclient` or `-webclient` where the app injects those clients.
-4. Run the OpenRewrite Jackson 2 -> 3 recipe; replace `ObjectMapper` injection with `JsonMapper`.
-5. `TestRestTemplate` still works if the test class has `@AutoConfigureTestRestTemplate` and the project has the `spring-boot-resttestclient` (test) and `spring-boot-restclient` (runtime) dependencies. Moving to `RestTestClient` rewrites tests, so list it as a follow-up.
-6. Renamed properties: add `spring-boot-properties-migrator` (runtime scope) for one run; it logs every renamed or removed property at startup. Fix them and remove the dependency. Then review the Spring Security 7 changes.
-7. Add `@NullMarked` to packages incrementally (follow-up, not part of the migration).
+## Upgrading from 3.x
+The step-by-step upgrade of an existing project is the `boot-migration` skill.

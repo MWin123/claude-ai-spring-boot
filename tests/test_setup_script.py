@@ -1,12 +1,18 @@
-"""setup.sh copies agents, skills and config/ (settings.json, CLAUDE.md, .gitignore) into a project, and nothing else."""
+"""setup.sh copies agents, skills and config/ (settings.json, CLAUDE.md) into a project, and nothing else."""
 import filecmp
+import os
+import re
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from helpers import CONFIG, ROOT
+from helpers import CONFIG, ROOT, code_blocks_blanked
 
 SETUP = ROOT / "setup.sh"
+IMPORT = re.compile(r"(?:^|\s)@((?:[^\s\\]|\\ )+)")  # Claude Code's own pattern for CLAUDE.md imports
+MAX_HOPS = 4
+POM = "<project><artifactId>demo</artifactId></project>"
 
 
 def run_setup(*args, cwd=None):
@@ -15,8 +21,13 @@ def run_setup(*args, cwd=None):
 
 @pytest.fixture
 def project(tmp_path):
-    (tmp_path / "pom.xml").write_text("<project/>")
+    (tmp_path / "pom.xml").write_text(POM)
     return tmp_path
+
+
+def expected_claude_md(name):
+    """config/CLAUDE.md with its placeholder heading replaced by the project name."""
+    return f"# {name}\n" + (CONFIG / "CLAUDE.md").read_text().split("\n", 1)[1]
 
 
 def assert_same_tree(source, target):
@@ -30,35 +41,27 @@ def assert_same_tree(source, target):
     "build_file", ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"]
 )
 def test_copies_only_the_claude_files(tmp_path, build_file):
-    (tmp_path / build_file).write_text("")
+    (tmp_path / build_file).write_text(POM if build_file == "pom.xml" else "")
 
     result = run_setup(tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([".claude", ".gitignore", "CLAUDE.md", build_file])
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([".claude", "CLAUDE.md", build_file])
     assert sorted(p.name for p in (tmp_path / ".claude").iterdir()) == ["agents", "settings.json", "skills"]
     assert_same_tree(ROOT / "agents", tmp_path / ".claude" / "agents")
     assert_same_tree(ROOT / "skills", tmp_path / ".claude" / "skills")
     assert filecmp.cmp(CONFIG / "settings.json", tmp_path / ".claude" / "settings.json", shallow=False)
-    assert filecmp.cmp(CONFIG / "CLAUDE.md", tmp_path / "CLAUDE.md", shallow=False)
-    assert filecmp.cmp(CONFIG / ".gitignore", tmp_path / ".gitignore", shallow=False)
+    assert (tmp_path / "CLAUDE.md").read_text() == expected_claude_md("demo" if build_file == "pom.xml" else tmp_path.name)
 
 
-def test_adds_only_missing_gitignore_rules(project):
+def test_leaves_an_existing_gitignore_alone(project):
     gitignore = project / ".gitignore"
-    gitignore.write_text("target/\n*.local")
+    gitignore.write_text("target/\n")
 
     result = run_setup(project)
-    after_first_run = gitignore.read_text()
-    run_setup(project)
 
     assert result.returncode == 0, result.stderr
-    assert after_first_run.startswith("target/\n*.local\n")
-    lines = after_first_run.splitlines()
-    assert lines.count("target/") == 1
-    template_rules = [l for l in (CONFIG / ".gitignore").read_text().splitlines() if l and not l.startswith("#")]
-    assert set(template_rules) <= set(lines)
-    assert gitignore.read_text() == after_first_run, "a second run must not add rules again"
+    assert gitignore.read_text() == "target/\n"
 
 
 def test_defaults_to_the_current_directory(project):
@@ -116,7 +119,7 @@ def test_backs_up_a_different_claude_md(project):
     assert result.returncode == 0, result.stderr
     assert (project / "CLAUDE.md.bak").read_text() == "project rules"
     assert "saved as CLAUDE.md.bak" in result.stdout
-    assert filecmp.cmp(CONFIG / "CLAUDE.md", project / "CLAUDE.md", shallow=False)
+    assert (project / "CLAUDE.md").read_text() == expected_claude_md("demo")
 
 
 def test_never_overwrites_an_earlier_backup(project):
@@ -133,9 +136,88 @@ def test_never_overwrites_an_earlier_backup(project):
 
 
 def test_no_backup_for_an_identical_claude_md(project):
-    (project / "CLAUDE.md").write_text((CONFIG / "CLAUDE.md").read_text())
+    assert run_setup(project).returncode == 0
 
     result = run_setup(project)
 
     assert result.returncode == 0, result.stderr
     assert not list(project.glob("CLAUDE.md*.bak"))
+
+
+def test_config_claude_md_starts_with_the_placeholder():
+    """setup.sh replaces this first line with the project name."""
+    assert (CONFIG / "CLAUDE.md").read_text().startswith("# <project-name>\n")
+
+
+@pytest.mark.parametrize(
+    ("build_file", "content"),
+    [
+        ("pom.xml", """<project>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+  </parent>
+  <artifactId>order-service</artifactId>
+</project>"""),
+        ("pom.xml", "<project><parent><artifactId>parent-pom</artifactId></parent><artifactId>order-service</artifactId></project>"),
+        ("settings.gradle", "pluginManagement {}\nrootProject.name = 'order-service'\n"),
+        ("settings.gradle.kts", 'rootProject.name = "order-service"\n'),
+    ],
+)
+def test_heading_is_the_project_name(tmp_path, build_file, content):
+    (tmp_path / build_file).write_text(content)
+
+    result = run_setup(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "CLAUDE.md").read_text() == expected_claude_md("order-service")
+    assert "(project: order-service)" in result.stdout
+
+
+@pytest.mark.parametrize("files", [{"settings.gradle": "include 'api'\n"}, {"build.gradle.kts": ""}])
+def test_gradle_name_defaults_to_the_directory(tmp_path, files):
+    project = tmp_path / "my-app"
+    project.mkdir()
+    for name, content in files.items():
+        (project / name).write_text(content)
+
+    result = run_setup(project)
+
+    assert result.returncode == 0, result.stderr
+    assert (project / "CLAUDE.md").read_text().startswith("# my-app\n")
+
+
+def test_rejects_a_pom_without_artifact_id(tmp_path):
+    (tmp_path / "pom.xml").write_text("<project><parent><artifactId>parent-pom</artifactId></parent></project>")
+
+    result = run_setup(tmp_path)
+
+    assert result.returncode == 1
+    assert "No artifactId" in result.stderr
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["pom.xml"]
+
+
+def imports(path):
+    """The files a memory file imports, parsed as Claude Code does: `@path` outside frontmatter and code, relative to the file."""
+    text = re.sub(r"\A---\n.*?\n---\n", "", path.read_text(), flags=re.S)
+    text = re.sub(r"`[^`\n]*`", " ", code_blocks_blanked(text))
+    for m in IMPORT.finditer(text):
+        name = m.group(1).split("#", 1)[0].replace("\\ ", " ")
+        if re.match(r"~/|/.|[a-zA-Z0-9._-]", name):  # what Claude Code accepts as a path
+            yield name, Path(os.path.normpath(path.parent / Path(name).expanduser()))
+
+
+def test_claude_md_imports_resolve(project):
+    """Every import in the installed CLAUDE.md, and in the files it imports, is a file setup.sh installed."""
+    assert run_setup(project).returncode == 0
+    loaded, missing, todo = set(), [], [(project / "CLAUDE.md", 0)]
+    while todo:
+        path, hops = todo.pop()
+        for name, target in imports(path) if hops < MAX_HOPS else ():
+            if not target.is_file():
+                missing.append(f"{path.relative_to(project)}: @{name}")
+            elif target not in loaded:
+                loaded.add(target)
+                todo.append((target, hops + 1))
+    assert not missing, "\n".join(missing)
+    assert project / ".claude" / "skills" / "conventions" / "SKILL.md" in loaded, "CLAUDE.md must import conventions"

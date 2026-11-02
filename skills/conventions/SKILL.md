@@ -12,8 +12,8 @@ These conventions apply to ALL code generated or reviewed in the project. Follow
 
 - **Records first, Lombok targeted** — modern Java (records, pattern matching, switch expressions); records for DTOs/value types; Lombok only where a record cannot replace the boilerplate, following the Lombok rules in the `java-modern` skill. API request/response models are the exception: they are generated from the spec (see next rule)
 - **Constructor injection** — no `@Autowired` on fields
-- **Contract-first REST APIs** — a hand-written OpenAPI spec (`src/main/resources/static/openapi.yaml`) defines every endpoint. `openapi-generator` (`spring`, `interfaceOnly`, `useSpringBoot4`) generates the API interfaces and models at build time, and controllers implement those interfaces. Never hand-write `@RequestMapping` controllers or edit generated code; change the spec instead (details in `spring-boot` `references/web.md`)
-- **Swagger UI** — add `springdoc-openapi-starter-webmvc-ui` if `spring-boot-starter-webmvc` is present, otherwise `springdoc-openapi-starter-webflux-ui` if `spring-boot-starter-webflux` is; skip if a springdoc starter is already there. Point it at the spec file (`springdoc.swagger-ui.url: /openapi.yaml`)
+- **Contract-first REST APIs** — a hand-written OpenAPI spec (`src/main/resources/static/openapi.yaml`) defines every endpoint. `openapi-generator` (`spring`, `interfaceOnly`, `useSpringBoot4`) generates the API interfaces and models at build time, and controllers implement those interfaces. Never hand-write `@RequestMapping` controllers or edit generated code; change the spec instead (details in `spring-boot` `references/openapi.md`)
+- **Swagger UI** — add `springdoc-openapi-starter-webmvc-ui` if `spring-boot-starter-webmvc` is present, otherwise `springdoc-openapi-starter-webflux-ui` if `spring-boot-starter-webflux` is; skip if a springdoc starter is already there. Point it at the spec file (`springdoc.swagger-ui.url: /openapi.yaml`; details in `spring-boot` `references/swagger-ui.md`)
 - **No Boot 3 leftovers** — Jackson 3, `@MockitoBean`, modular starters (list in `spring-boot` `references/boot4.md`)
 - **RestClient** (`spring-boot-starter-restclient`) over RestTemplate/WebClient for blocking HTTP calls
 - **RestTestClient** with `@AutoConfigureRestTestClient` for integration tests
@@ -37,7 +37,7 @@ These conventions apply to ALL code generated or reviewed in the project. Follow
 
 ## Default application.yml
 
-Every new app starts with virtual threads, Problem Details and graceful shutdown:
+Every new app starts with virtual threads, Problem Details, graceful shutdown and JSON console logs (plain text only in the `human-logs` profile, `logging-patterns` skill):
 
 ```yaml
 spring:
@@ -51,4 +51,8 @@ spring:
     timeout-per-shutdown-phase: 30s
 server:
   shutdown: graceful
+logging:
+  structured:
+    format:
+      console: logstash
 ```

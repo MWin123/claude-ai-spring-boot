@@ -6,7 +6,7 @@ user-invocable: false
 
 # Review Checklist
 
-Two sections. The quick review runs **Mechanical** only; the full feature review runs **Mechanical** and **Deep**. This list says what to flag, not how to write code. The rules themselves are in the `conventions` skill (preloaded with this one), the Lombok rules in `.claude/skills/java-modern/SKILL.md` (section "Boilerplate: Modern Java First, Lombok Targeted") and the Boot 4 changes in `.claude/skills/spring-boot/references/boot4.md`; Read those files only when the change touches them.
+Two sections. The quick review runs **Mechanical** only; the full feature review runs **Mechanical** and **Deep**. This list says what to flag, not how to write code. The rules themselves are in the `conventions` skill (loaded with `CLAUDE.md`), the Lombok rules in `.claude/skills/java-modern/SKILL.md` (section "Boilerplate: Modern Java First, Lombok Targeted") and the Boot 4 changes in `.claude/skills/spring-boot/references/boot4.md`; Read those files only when the change touches them.
 
 ## Mechanical
 
@@ -24,7 +24,7 @@ Fast, high-confidence checks that need only the changed lines.
 - Anything deeper (Spring Security config, CORS/CSRF, TLS, headers, dependency CVEs) belongs to the full review (Deep, Security)
 
 ### Conventions
-- Contract-first violations: a hand-written `@RequestMapping`/`@GetMapping` controller instead of implementing a generated `*Api` interface, edited generated code, an endpoint or API DTO missing from `openapi.yaml`, a spec change without the matching controller change, a spec `maxLength` that differs from the column length, a spec that breaks the "Spec Design Checklist" in `web.md` of the `spring-boot` skill (unbounded list operation, unbounded strings, one schema for request and response, missing error responses, a breaking change to a published API)
+- Contract-first violations: a hand-written `@RequestMapping`/`@GetMapping` controller instead of implementing a generated `*Api` interface, edited generated code, an endpoint or API DTO missing from `openapi.yaml`, a spec change without the matching controller change, a spec `maxLength` that differs from the column length, a spec that breaks the "Spec Design Checklist" in `openapi.md` of the `spring-boot` skill (unbounded list operation, unbounded strings, one schema for request and response, missing error responses, a breaking change to a published API)
 - Violations of the `conventions` skill: `@Autowired` on fields, non-generated DTOs that are not records, `@DynamicPropertySource` instead of `@ServiceConnection`, a CI pipeline generated unprompted, a second compose file next to an existing one
 - Violations of the Lombok rules in `java-modern` (on entities: `@Data`, `@EqualsAndHashCode`, `@ToString`, `@Value`, or a class-level `@Builder`)
 - Old-style Java where modern Java fits: `Collectors.toList()` (use `.toList()`), `instanceof` plus cast, `switch` with `break`
@@ -32,7 +32,7 @@ Fast, high-confidence checks that need only the changed lines.
 ### Deprecated / Outdated (Boot 4)
 - `javax.persistence.*` (use `jakarta.persistence.*`); `WebSecurityConfigurerAdapter` (use a `SecurityFilterChain` bean); `@EnableWebSecurity` without `@Configuration`
 - `spring-boot-starter-parent` or the `org.springframework.boot` Gradle plugin below 4.x; classic `spring-boot-starter-web` (use `spring-boot-starter-webmvc` plus `-test` starters)
-- `RestTemplate` (prefer `RestClient` or HTTP interface clients); `WebClient` for blocking calls; `TestRestTemplate` in new tests (prefer `RestTestClient` with `@AutoConfigureRestTestClient`; migrated tests may keep it, see `boot4.md`)
+- `RestTemplate` (prefer `RestClient` or HTTP interface clients); `WebClient` for blocking calls; `TestRestTemplate` in new tests (prefer `RestTestClient` with `@AutoConfigureRestTestClient`; migrated tests may keep it, see `.claude/skills/boot-migration/SKILL.md`)
 - `@MockBean`/`@SpyBean` (use `@MockitoBean`/`@MockitoSpyBean`)
 - `com.fasterxml.jackson.databind` imports (Jackson 3 uses `tools.jackson.databind`)
 

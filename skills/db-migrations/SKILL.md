@@ -35,7 +35,11 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/001-create-users-table.yaml
   - include:
-      file: db/changelog/changes/002-create-addresses-and-roles.yaml
+      file: db/changelog/changes/002-create-addresses-table.yaml
+  - include:
+      file: db/changelog/changes/003-create-roles-tables.yaml
+  - include:
+      file: db/changelog/changes/004-create-products-table.yaml
 ```
 
 ```yaml
@@ -64,10 +68,10 @@ databaseChangeLog:
 ```
 
 ```yaml
-# src/main/resources/db/changelog/changes/002-create-addresses-and-roles.yaml
+# src/main/resources/db/changelog/changes/002-create-addresses-table.yaml
 databaseChangeLog:
   - changeSet:
-      id: 002-create-addresses-and-roles
+      id: 002-create-addresses-table
       author: app
       changes:
         - createTable:
@@ -84,6 +88,15 @@ databaseChangeLog:
             tableName: addresses
             columns:
               - column: { name: user_id }
+```
+
+```yaml
+# src/main/resources/db/changelog/changes/003-create-roles-tables.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-roles-tables
+      author: app
+      changes:
         - createTable:
             tableName: roles
             columns:
@@ -94,15 +107,39 @@ databaseChangeLog:
             columns:
               - column: { name: user_id, type: BIGINT, constraints: { nullable: false, primaryKey: true, foreignKeyName: fk_user_roles_user, references: users(id), deleteCascade: true } }
               - column: { name: role_id, type: BIGINT, constraints: { nullable: false, primaryKey: true, foreignKeyName: fk_user_roles_role, references: roles(id) } }
+  - changeSet:
+      id: 003-insert-user-role
+      author: app
+      changes:
         - insert:
             tableName: roles
             columns:
               - column: { name: name, value: USER }
+      rollback:   # Liquibase can't derive one for data changes
+        - delete:
+            tableName: roles
+            where: name = 'USER'
+```
+
+```yaml
+# src/main/resources/db/changelog/changes/004-create-products-table.yaml (Product in the spring-boot skill)
+databaseChangeLog:
+  - changeSet:
+      id: 004-create-products-table
+      author: app
+      changes:
+        - createTable:
+            tableName: products
+            columns:
+              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: name, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: price, type: "DECIMAL(10, 2)", constraints: { nullable: false } }
 ```
 
 ## Flyway
 
 - SQL in `src/main/resources/db/migration`, named `V<n>__<snake_case_description>.sql`; take the next free number after checking existing files.
+- Add the database module next to `spring-boot-starter-flyway`, for PostgreSQL `org.flywaydb:flyway-database-postgresql` (Initializr adds it). Without it, startup fails with "Unsupported Database".
 
 ```sql
 -- V1__create_users_table.sql
@@ -144,6 +181,13 @@ CREATE TABLE user_roles (
 );
 
 INSERT INTO roles (name) VALUES ('USER');
+
+-- V4__create_products_table.sql (Product in the spring-boot skill)
+CREATE TABLE products (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL
+);
 ```
 
 ## Safe Changes

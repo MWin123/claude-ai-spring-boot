@@ -124,6 +124,13 @@ def test_every_agent_is_routed_from_claude_md():
     assert not missing, f"config/CLAUDE.md does not say when to use {missing}"
 
 
+def test_every_skill_is_routed_from_claude_md():
+    """The main loop loads skills from the CLAUDE.md Skills section; review-checklist is preloaded by the reviewers."""
+    skills = (CONFIG / "CLAUDE.md").read_text().split("## Skills", 1)[1].split("\n## ", 1)[0]
+    missing = sorted(name for name in SKILL_NAMES - {"review-checklist"} if f"`{name}`" not in skills)
+    assert not missing, f"config/CLAUDE.md does not say when to use {missing}"
+
+
 def readme_section(title):
     text = (ROOT / "README.md").read_text()
     return text.split(f"### {title}", 1)[1].split("\n#", 1)[0]

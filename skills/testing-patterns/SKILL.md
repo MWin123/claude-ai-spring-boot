@@ -16,6 +16,12 @@ Testing strategies for Spring Boot applications. Always write both positive and 
 | Slice | `@WebMvcTest`, `@WebFluxTest`, `@DataJpaTest` | Medium | One layer | Controllers, repositories |
 | Integration | `@SpringBootTest` | Slow | Full app | End-to-end flows, cross-layer |
 
+## References
+
+| Topic | Reference |
+|-------|-----------|
+| Reactive controller slice tests (`@WebFluxTest`), integration tests (`@SpringBootTest` with `RestTestClient`), test configuration and test data | `references/integration.md` |
+
 ## Test Profiles
 
 Two profiles with separate jobs. Both live in `src/test/resources`.
@@ -124,18 +130,17 @@ class OrderServiceTest {
 
 ```java
 @WebMvcTest(ProductController.class)
-@Import(SecurityConfig.class)   // assumes it restricts POST to ADMIN and keeps CSRF on (security.md)
+@Import(SecurityConfig.class)   // restricts POST to ADMIN and keeps CSRF on for requests without a bearer token (security.md)
 class ProductControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockitoBean
-    private ProductService productService;
+    @Autowired private MockMvc mockMvc;
+    @MockitoBean private ProductService productService;
+    // SecurityConfig's resource server needs both; @WithMockUser authenticates without a token
+    @MockitoBean private JwtDecoder jwtDecoder;
+    @MockitoBean private UserDetailsService userDetailsService;
 
     // Jackson 3: tools.jackson.databind.json.JsonMapper (not com.fasterxml.jackson.databind)
-    @Autowired
-    private JsonMapper jsonMapper;
+    @Autowired private JsonMapper jsonMapper;
 
     // ✅ Positive - successful creation (ProductRequest/ProductResponse are the generated models)
     @Test
@@ -153,12 +158,13 @@ class ProductControllerTest {
             .andExpect(jsonPath("$.name").value("Widget"));
     }
 
-    // ✅ Negative - validation failure
-    @Test
+    // ✅ Negative - validation failure at the spec's limits (name: minLength 1, maxLength 100)
+    @ParameterizedTest
+    @ValueSource(ints = {0, 101})
     @WithMockUser(roles = "ADMIN")
-    @DisplayName("POST /api/v1/products - blank name returns 400")
-    void createProduct_blankName_returns400() throws Exception {
-        var request = new ProductRequest("", new BigDecimal("10.00"));
+    @DisplayName("POST /api/v1/products - name length out of range returns 400")
+    void createProduct_nameLengthOutOfRange_returns400(int length) throws Exception {
+        var request = new ProductRequest("x".repeat(length), new BigDecimal("10.00"));
 
         mockMvc.perform(post("/api/v1/products")
                 .with(csrf())   // SecurityMockMvcRequestPostProcessors.csrf(); without it every POST is 403
@@ -198,47 +204,6 @@ class ProductControllerTest {
 }
 ```
 
-## Reactive Controller Slice Tests (@WebFluxTest)
-
-```java
-@WebFluxTest(ProductReactiveController.class)
-class ProductReactiveControllerTest {
-
-    @Autowired
-    private WebTestClient webTestClient;
-
-    @MockitoBean
-    private ProductReactiveService productService;
-
-    // ✅ Positive
-    @Test
-    @DisplayName("GET /api/v1/products/1 - returns the product")
-    void getProduct_exists_returns200() {
-        when(productService.findById(1L))
-            .thenReturn(Mono.just(new ProductResponse(1L, "Widget", new BigDecimal("10.00"))));
-
-        webTestClient.get()
-            .uri("/api/v1/products/{id}", 1L)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody(ProductResponse.class)
-            .value(product -> assertThat(product.getName()).isEqualTo("Widget"));
-    }
-
-    // ✅ Negative
-    @Test
-    @DisplayName("GET /api/v1/products/999 - returns 404")
-    void getProduct_missing_returns404() {
-        when(productService.findById(999L)).thenReturn(Mono.empty());
-
-        webTestClient.get()
-            .uri("/api/v1/products/{id}", 999L)
-            .exchange()
-            .expectStatus().isNotFound();
-    }
-}
-```
-
 ## Testcontainers Reusable Config
 
 ```java
@@ -258,6 +223,8 @@ Import it with `@Import(TestcontainersConfig.class)` together with the `testcont
 ## Repository Slice Tests (@DataJpaTest)
 
 ### On H2 (default, fast)
+
+Entities with auditing fields (`@CreatedDate`, like `User` in `data.md`) also need `@Import(JpaAuditingConfig.class)`: slices don't load the `@Configuration` that carries `@EnableJpaAuditing`, so `created_at` stays NULL and the insert fails.
 
 ```java
 @DataJpaTest
@@ -340,127 +307,11 @@ class ProductRepositoryContainerTest {
 
 Neither example needs `@AutoConfigureTestDatabase`. The `test` profile sets `spring.test.database.replace: none`, so its H2 URL is used. Under the `testcontainers` profile the Boot 4 default (`Replace.NON_TEST`) keeps the `@ServiceConnection` datasource.
 
-## Integration Tests (@SpringBootTest)
-
-```java
-@SpringBootTest   // MOCK environment: requests run through MockMvc on the test thread, so @WithMockUser applies
-@AutoConfigureMockMvc
-@AutoConfigureRestTestClient   // bound to MockMvc when it is present
-@ActiveProfiles("testcontainers")
-@Import(TestcontainersConfig.class)
-@WithMockUser(roles = "ADMIN")   // POST requires ADMIN and CSRF stays on (security.md); 403 cases are in the slice test
-class ProductIntegrationTest {
-
-    @Autowired
-    private RestTestClient restTestClient;
-
-    @Autowired
-    private ProductRepository productRepository;
-
-    @BeforeEach
-    void setUp() {
-        productRepository.deleteAll();
-        // CookieCsrfTokenRepository accepts any token whose cookie and header match
-        restTestClient = restTestClient.mutate().defaultCookie("XSRF-TOKEN", "test").defaultHeader("X-XSRF-TOKEN", "test").build();
-    }
-
-    // ✅ Positive
-    @Test
-    @DisplayName("Full CRUD flow works end-to-end")
-    void crudFlow() {
-        // Create
-        var request = new ProductRequest("Widget", new BigDecimal("10.00"));
-        var created = restTestClient.post()
-            .uri("/api/v1/products")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(request)
-            .exchange()
-            .expectStatus().isCreated()
-            .expectBody(ProductResponse.class)
-            .returnResult()
-            .getResponseBody();
-
-        Long id = created.getId();
-
-        // Read
-        restTestClient.get()
-            .uri("/api/v1/products/{id}", id)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody(ProductResponse.class)
-            .value(product -> assertThat(product.getName()).isEqualTo("Widget"));
-
-        // Delete
-        restTestClient.delete()
-            .uri("/api/v1/products/{id}", id)
-            .exchange()
-            .expectStatus().isNoContent();
-
-        restTestClient.get()
-            .uri("/api/v1/products/{id}", id)
-            .exchange()
-            .expectStatus().isNotFound();
-    }
-
-    // ✅ Negative
-    @Test
-    @DisplayName("Invalid request returns 400")
-    void invalidRequest_returns400() {
-        restTestClient.post()
-            .uri("/api/v1/products")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(new ProductRequest("", new BigDecimal("-1")))
-            .exchange()
-            .expectStatus().isBadRequest();
-    }
-}
-```
-
-## Test Configuration and Data
-
-```java
-@TestConfiguration(proxyBeanMethods = false)
-public class TestConfig {
-
-    @Bean
-    @Primary
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(4); // faster for tests
-    }
-
-    @Bean
-    public Clock fixedClock() {
-        return Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneOffset.UTC);
-    }
-}
-
-public final class TestData {
-
-    private TestData() {}
-
-    public static Product product(String name) {
-        return Product.builder().name(name).price(new BigDecimal("10.00")).build();
-    }
-
-    public static ProductRequest productRequest() {
-        return new ProductRequest("Widget", new BigDecimal("10.00"));
-    }
-}
-```
-
 ## Parameterized Tests
 
+Test input validation in the controller slice, like `createProduct_nameLengthOutOfRange_returns400` above: the constraints live on the generated interfaces and models, not on the service. For other inputs:
+
 ```java
-@ParameterizedTest
-@ValueSource(strings = {"", " ", "ab"})
-@DisplayName("Should reject invalid usernames")
-void shouldRejectInvalidUsername(String username) {
-    var request = new UserRequest(username, "valid@email.com");
-
-    assertThatThrownBy(() -> userService.create(request))
-        .isInstanceOf(ConstraintViolationException.class);
-}
-
 @ParameterizedTest
 @CsvSource({
     "admin@test.com, ADMIN, true",

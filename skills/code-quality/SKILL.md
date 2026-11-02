@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: Clean code for Java and Spring Boot - DRY, KISS, YAGNI, null safety, exception handling, resource management, transaction boundaries, naming and performance pitfalls, with bad and good examples. Use when writing or refactoring code; reviews go to the code-reviewer or quick-reviewer agent.
+description: Clean code for Java and Spring Boot - DRY, KISS, YAGNI, null safety, exception handling, resource management, transaction boundaries and naming, with bad and good examples; performance pitfalls are in jpa-patterns. Use when writing or refactoring code; reviews go to the code-reviewer or quick-reviewer agent.
 when_to_use: '"refactor", "clean this code", "improve readability", "simplify this"; fixing the findings of a review.'
 ---
 
@@ -76,13 +76,12 @@ public class UserService { }
 
 ## API Design
 
-The REST contract is the OpenAPI spec: HTTP verbs, status codes, versioning, pagination and separate request/response schemas follow the "Spec Design Checklist" in `web.md` of the `spring-boot` skill. Controllers only implement the generated interfaces, and entities never leave the service layer.
+The REST contract is the OpenAPI spec: HTTP verbs, status codes, versioning, pagination and separate request/response schemas follow the "Spec Design Checklist" in `openapi.md` of the `spring-boot` skill. Controllers only implement the generated interfaces, and entities never leave the service layer.
 
 ## Java Pitfalls
 
 ### Null Safety
 
-**Check for:**
 ```java
 // ❌ NPE risk
 String name = user.getName().toUpperCase();
@@ -97,15 +96,10 @@ if (user.getName() == null) return "";
 return user.getName().toUpperCase();
 ```
 
-**Flags:**
-- Chained calls without null checks
-- `Optional.get()` without `isPresent()`
-- Returning `null` instead of `Optional` or empty collection
-- Missing JSpecify nullability on public APIs: `@NullMarked` on packages, `org.jspecify.annotations.Nullable` where null is allowed
+Return `Optional` or an empty collection instead of `null`, and never call `Optional.get()` unchecked. Public APIs declare nullability with JSpecify: `@NullMarked` on packages, `org.jspecify.annotations.Nullable` where null is allowed (`boot4.md` in the `spring-boot` skill).
 
 ### Exception Handling
 
-**Check for:**
 ```java
 // ❌ Swallowing exceptions
 try {
@@ -124,15 +118,10 @@ catch (IOException e) {
 }
 ```
 
-**Flags:**
-- Empty catch blocks
-- Catching `Exception` or `Throwable` (too broad)
-- Not logging exceptions
-- Creating new exception without original cause
+Catch the narrowest exception type, never leave a catch block empty or unlogged, and pass the original exception as the cause when you rethrow.
 
 ### Resource Management
 
-**Check for:**
 ```java
 // ❌ Resource leak
 FileInputStream fis = new FileInputStream(file);
@@ -147,7 +136,6 @@ try (FileInputStream fis = new FileInputStream(file)) {
 
 ### Transaction Boundaries
 
-**Check for:**
 ```java
 // ❌ Missing transaction
 public void createUser(UserRequest request) {
@@ -185,21 +173,4 @@ public void doStuff(Long id) { }
 
 ### Performance
 
-**Check for:**
-```java
-// ❌ N+1 query problem
-List<User> users = userRepository.findAll();
-for (User user : users) {
-    List<Order> orders = orderRepository.findByUserId(user.getId());  // N queries
-}
-
-// ✅ Join fetch
-@Query("SELECT u FROM User u LEFT JOIN FETCH u.orders")
-List<User> findAllWithOrders();
-
-// ❌ Loading all data
-List<User> allUsers = userRepository.findAll();  // Could be millions
-
-// ✅ Pagination
-Page<User> users = userRepository.findAll(PageRequest.of(0, 20));
-```
+N+1 queries, fetch joins and pagination of large result sets are in the `jpa-patterns` skill.

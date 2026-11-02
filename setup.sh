@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copies agents, skills, config/settings.json, config/CLAUDE.md and config/.gitignore into a Spring Boot project.
+# Copies agents, skills, config/settings.json and config/CLAUDE.md into a Spring Boot project.
 # Usage: ./setup.sh [project-dir]   (defaults to the current directory)
 set -euo pipefail
 
@@ -26,6 +26,27 @@ if [[ -z "$BUILD_FILE" ]]; then
   exit 1
 fi
 
+# Project name for the CLAUDE.md heading: Maven artifactId (not the parent's), else Gradle rootProject.name, else the directory name (Gradle's default)
+if [[ "$BUILD_FILE" == pom.xml ]]; then
+  NAME="$(sed -e 's:<parent>.*</parent>::' -e '/<parent>/,/<\/parent>/d' "$TARGET_DIR/pom.xml" | sed -n 's:.*<artifactId>\([^<]*\)</artifactId>.*:\1:p' | head -n 1)"
+  if [[ -z "$NAME" ]]; then
+    echo "No artifactId in $TARGET_DIR/pom.xml" >&2
+    exit 1
+  fi
+else
+  NAME="$(cat "$TARGET_DIR"/settings.gradle "$TARGET_DIR"/settings.gradle.kts 2>/dev/null |
+    sed -n "s/^[[:space:]]*rootProject\.name[[:space:]]*=[[:space:]]*[\"']\([^\"']*\)[\"'].*/\1/p" | head -n 1)" || true
+  NAME="${NAME:-$(basename "$TARGET_DIR")}"
+fi
+PLACEHOLDER="# <project-name>"
+if [[ "$(head -n 1 "$SOURCE_DIR/config/CLAUDE.md")" != "$PLACEHOLDER" ]]; then
+  echo "config/CLAUDE.md must start with '$PLACEHOLDER'" >&2
+  exit 1
+fi
+CLAUDE_MD="$(mktemp)"
+trap 'rm -f "$CLAUDE_MD"' EXIT
+{ printf '# %s\n' "$NAME"; tail -n +2 "$SOURCE_DIR/config/CLAUDE.md"; } > "$CLAUDE_MD"
+
 mkdir -p "$TARGET_DIR/.claude/agents" "$TARGET_DIR/.claude/skills"
 cp -r "$SOURCE_DIR/agents/." "$TARGET_DIR/.claude/agents/"
 cp -r "$SOURCE_DIR/skills/." "$TARGET_DIR/.claude/skills/"
@@ -35,24 +56,13 @@ if [[ -e "$TARGET_DIR/.claude/settings.json" ]]; then
 else
   cp "$SOURCE_DIR/config/settings.json" "$TARGET_DIR/.claude/settings.json"
 fi
-if [[ -f "$TARGET_DIR/CLAUDE.md" ]] && ! cmp -s "$SOURCE_DIR/config/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"; then
+if [[ -f "$TARGET_DIR/CLAUDE.md" ]] && ! cmp -s "$CLAUDE_MD" "$TARGET_DIR/CLAUDE.md"; then
   BACKUP="$TARGET_DIR/CLAUDE.md.bak"
   # Never overwrite an earlier backup: it may hold the project's original rules
   [[ -e "$BACKUP" ]] && BACKUP="$TARGET_DIR/CLAUDE.md.$(date +%Y%m%d%H%M%S).bak"
   cp "$TARGET_DIR/CLAUDE.md" "$BACKUP"
   echo "Existing CLAUDE.md saved as $(basename "$BACKUP")"
 fi
-cp "$SOURCE_DIR/config/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
-# An existing .gitignore keeps its rules and only gets the template's missing ones
-GITIGNORE="$TARGET_DIR/.gitignore"
-if [[ -f "$GITIGNORE" ]]; then
-  MISSING="$(grep -vxF -f "$GITIGNORE" "$SOURCE_DIR/config/.gitignore" | grep -v -e '^#' -e '^$' || true)"
-  if [[ -n "$MISSING" ]]; then
-    printf '\n### Added by setup.sh ###\n%s\n' "$MISSING" >> "$GITIGNORE"
-    echo "Missing rules added to .gitignore"
-  fi
-else
-  cp "$SOURCE_DIR/config/.gitignore" "$GITIGNORE"
-fi
+cp "$CLAUDE_MD" "$TARGET_DIR/CLAUDE.md"
 
-echo "Copied agents, skills, settings.json, CLAUDE.md and .gitignore to $TARGET_DIR"
+echo "Copied agents, skills, settings.json and CLAUDE.md to $TARGET_DIR (project: $NAME)"

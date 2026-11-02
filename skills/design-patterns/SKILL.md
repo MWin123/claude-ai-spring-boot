@@ -132,12 +132,7 @@ public class ShoppingCart {
 cart.setPaymentStrategy(new CreditCardPayment("4111..."));
 cart.checkout(new BigDecimal("99.99"));
 
-// Functional variant (Java 8+)
-@FunctionalInterface
-public interface PaymentStrategy {
-    void pay(BigDecimal amount);
-}
-
+// Functional variant: PaymentStrategy has one method (mark it @FunctionalInterface), so a lambda implements it
 PaymentStrategy creditCard = amount -> System.out.println("Card: " + amount);
 cart.setPaymentStrategy(creditCard);
 ```
@@ -150,11 +145,13 @@ cart.setPaymentStrategy(creditCard);
 public record OrderPlacedEvent(Order order) {}
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
+    private final OrderRepository orderRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public void placeOrder(Order order) {
-        saveOrder(order);
+        orderRepository.save(order);
         eventPublisher.publishEvent(new OrderPlacedEvent(order));
     }
 }
@@ -170,7 +167,7 @@ public class InventoryListener {
 @Component
 public class EmailListener {
     @EventListener
-    @Async
+    @Async                    // needs @EnableAsync on a @Configuration class, or it runs on the caller's thread
     public void handleOrderPlaced(OrderPlacedEvent event) {
         // Send email
     }
@@ -265,8 +262,8 @@ public class OutboxEvent {
     @Setter(AccessLevel.NONE)
     private Long id;
 
-    private String aggregateType;
-    private String aggregateId;
+    private String topic;
+    private String aggregateId;              // Kafka key: one order's events stay in order
     private String eventType;
 
     @Column(columnDefinition = "TEXT")
@@ -276,32 +273,43 @@ public class OutboxEvent {
     private boolean published;
 }
 
+public record OrderCreatedEvent(Long orderId, BigDecimal amount) {}
+
 @Service
 @RequiredArgsConstructor
 public class OrderService {
     private final OrderRepository orderRepository;
     private final OutboxEventRepository outboxRepository;
+    private final JsonMapper jsonMapper;
 
     @Transactional
     public Order createOrder(OrderRequest request) {
         Order order = new Order();
-        order.setStatus(OrderStatus.CREATED);
+        order.setStatus(OrderStatus.PENDING);
+        order.setTotalAmount(request.amount());
         order = orderRepository.save(order);
 
         OutboxEvent event = new OutboxEvent();
-        event.setAggregateType("Order");
+        event.setTopic("order-events");
         event.setAggregateId(order.getId().toString());
         event.setEventType("OrderCreated");
-        event.setPayload(toJson(order));
+        event.setPayload(jsonMapper.writeValueAsString(new OrderCreatedEvent(order.getId(), order.getTotalAmount())));
         event.setCreatedAt(LocalDateTime.now());
-        event.setPublished(false);
         outboxRepository.save(event);
-
         return order;
     }
 }
 
-// Poller publishes events and marks them as published
+public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> {
+    // SKIP LOCKED (PostgreSQL, MySQL 8): each pod claims a different batch
+    @Query(value = """
+        SELECT * FROM outbox_events WHERE published = false
+        ORDER BY id LIMIT :limit FOR UPDATE SKIP LOCKED
+        """, nativeQuery = true)
+    List<OutboxEvent> lockUnpublished(int limit);
+}
+
+// Poller publishes events and marks them as published; needs @EnableScheduling on a @Configuration class
 @Component
 @RequiredArgsConstructor
 public class OutboxPoller {
@@ -311,9 +319,9 @@ public class OutboxPoller {
     @Scheduled(fixedDelay = 1000)
     @Transactional
     public void publishPendingEvents() {
-        List<OutboxEvent> events = outboxRepository.findByPublishedFalse();
-        for (OutboxEvent event : events) {
-            kafka.send(event.getAggregateType(), event.getAggregateId(), event.getPayload());
+        for (OutboxEvent event : outboxRepository.lockUnpublished(100)) {
+            // wait for the broker; a failure rolls back the batch, which goes again (at-least-once)
+            kafka.send(event.getTopic(), event.getAggregateId(), event.getPayload()).join();
             event.setPublished(true);
         }
     }
@@ -325,28 +333,11 @@ public class OutboxPoller {
 
 ```java
 // ✅ Choreography-based saga - each service listens and reacts
-// Order Service publishes OrderCreated
-@Service
-@RequiredArgsConstructor
-public class OrderService {
-    private final ApplicationEventPublisher eventPublisher;
-    private final OrderRepository orderRepository;
-
-    @Transactional
-    public Order createOrder(OrderRequest request) {
-        Order order = new Order();
-        order.setStatus(OrderStatus.PENDING);
-        order = orderRepository.save(order);
-        eventPublisher.publishEvent(new OrderCreatedEvent(order.getId(), request.items()));
-        return order;
-    }
-
-    @Transactional
-    public void handlePaymentFailed(Long orderId) {
-        Order order = orderRepository.findById(orderId).orElseThrow();
-        order.setStatus(OrderStatus.CANCELLED);
-        orderRepository.save(order);
-    }
+// Order Service: createOrder (Outbox above) saves a PENDING order and sends OrderCreatedEvent to "order-events"
+@Transactional
+public void handlePaymentFailed(Long orderId) {                  // compensating action in OrderService
+    Order order = orderRepository.findById(orderId).orElseThrow();
+    order.setStatus(OrderStatus.CANCELLED);
 }
 
 // Payment Service listens to OrderCreated, publishes PaymentCompleted or PaymentFailed
@@ -358,12 +349,18 @@ public class PaymentEventHandler {
     @KafkaListener(topics = "order-events")
     public void handleOrderCreated(OrderCreatedEvent event) {
         try {
-            paymentService.charge(event.orderId(), event.amount());
+            paymentService.charge(event.orderId(), event.amount());   // idempotent: the outbox may resend
             // Publish PaymentCompleted
         } catch (PaymentException e) {
             // Publish PaymentFailed → triggers compensating action
         }
     }
+}
+
+// The outbox sends JSON strings; without this bean the listener fails with "Cannot convert from [java.lang.String]"
+@Bean
+RecordMessageConverter messageConverter() {
+    return new StringJacksonJsonMessageConverter();             // Jackson 3
 }
 ```
 
@@ -394,7 +391,7 @@ public class OrderCommandService {
         order.setStatus(OrderStatus.CREATED);
         command.items().forEach(order::addItem);
         order = orderRepository.save(order);
-        eventPublisher.publishEvent(new OrderCreatedEvent(order));
+        eventPublisher.publishEvent(new OrderCreatedEvent(order.getId(), order.getTotalAmount()));
         return order.getId();
     }
 }
@@ -432,21 +429,24 @@ public class OrderView {
     private LocalDateTime createdAt;
 }
 
-// Projection updater - keeps query model in sync
+// Projection updater - runs after the command commits, so a failure here can't roll back the order
 @Component
 @RequiredArgsConstructor
 public class OrderViewUpdater {
+    private final OrderRepository orderRepository;
     private final OrderViewRepository viewRepository;
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)      // the command's transaction is already over
     public void on(OrderCreatedEvent event) {
+        Order order = orderRepository.findById(event.orderId()).orElseThrow();
         OrderView view = new OrderView();
-        view.setId(event.order().getId());
-        view.setCustomerId(event.order().getCustomerId());
-        view.setStatus(event.order().getStatus().name());
-        view.setTotalAmount(event.order().getTotalAmount());
-        view.setItemCount(event.order().getItems().size());
-        view.setCreatedAt(event.order().getCreatedAt());
+        view.setId(order.getId());
+        view.setCustomerId(order.getCustomerId());
+        view.setStatus(order.getStatus().name());
+        view.setTotalAmount(order.getTotalAmount());
+        view.setItemCount(order.getItems().size());
+        view.setCreatedAt(order.getCreatedAt());
         viewRepository.save(view);
     }
 }

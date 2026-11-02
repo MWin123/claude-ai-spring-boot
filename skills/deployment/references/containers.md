@@ -27,9 +27,6 @@
     <configuration>
         <image>
             <name>${project.artifactId}:${project.version}</name>
-            <env>
-                <BP_JVM_VERSION>21</BP_JVM_VERSION>
-            </env>
         </image>
     </configuration>
 </plugin>
@@ -39,16 +36,19 @@
 // build.gradle.kts
 tasks.bootBuildImage {
     imageName = "${project.name}:${project.version}"
-    environment = mapOf("BP_JVM_VERSION" to "21")
 }
 ```
+
+The plugin passes the project's Java version to the buildpacks (`BP_JVM_VERSION`); setting it by hand only lets it drift from the build.
 
 Advantages over a Dockerfile: reproducible builds with nothing to maintain, automatic security patching of the base image layers, and layering that caches dependencies separately from the app code.
 
 **Alternative: multi-stage Dockerfile**
 
 ```dockerfile
-FROM eclipse-temurin:21-jdk-alpine AS build
+# The project's Java version (java.version in pom.xml, the toolchain in Gradle)
+ARG JAVA_VERSION=21
+FROM eclipse-temurin:${JAVA_VERSION}-jdk-alpine AS build
 WORKDIR /workspace/app
 COPY mvnw .
 COPY .mvn .mvn
@@ -57,7 +57,7 @@ RUN ./mvnw dependency:go-offline -B
 COPY src src
 RUN ./mvnw package -DskipTests
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:${JAVA_VERSION}-jre-alpine
 RUN addgroup -S -g 1000 app && adduser -S -u 1000 -G app app && apk add --no-cache curl
 WORKDIR /app
 COPY --from=build /workspace/app/target/*.jar app.jar
@@ -69,7 +69,8 @@ ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 For Gradle, replace the build stage (the runtime stage stays the same; `bootJar` writes only the executable jar, `build` would add a `-plain.jar`). `./gradlew dependencies` would not download the jars, so a BuildKit cache mount keeps them between builds instead:
 
 ```dockerfile
-FROM eclipse-temurin:21-jdk-alpine AS build
+ARG JAVA_VERSION=21
+FROM eclipse-temurin:${JAVA_VERSION}-jdk-alpine AS build
 WORKDIR /workspace/app
 COPY gradlew .
 COPY gradle gradle

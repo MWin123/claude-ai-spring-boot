@@ -258,37 +258,9 @@ public BigDecimal calculateShipping(Address address) {
 }
 ```
 
-### In Exception Handlers
-
-```java
-@RestControllerAdvice
-public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
-
-    // List the exceptions: a catch-all Exception handler would also turn Spring Security's 403 into a 500
-    @ExceptionHandler({ResourceNotFoundException.class, DataIntegrityViolationException.class,
-            ConstraintViolationException.class})
-    public ProblemDetail handle(RuntimeException ex) {
-        return switch (ex) {
-            case ResourceNotFoundException e -> ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
-            case DataIntegrityViolationException e -> ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Duplicate entry");
-            case ConstraintViolationException e -> ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
-            default -> throw ex;   // not reached: only the listed exceptions get here
-        };
-    }
-}
-```
-
 ## Virtual Threads (Java 21 + Spring Boot 4.x)
 
-```yaml
-# application.yml - enables virtual threads for all request handling
-spring:
-  threads:
-    virtual:
-      enabled: true
-```
-
-This single property:
+The default `application.yml` in the `conventions` skill turns them on with `spring.threads.virtual.enabled: true`. That single property:
 - Runs each HTTP request on a virtual thread (Tomcat)
 - Makes `@Async` methods use virtual threads
 - Allows blocking I/O (JDBC, RestClient) to scale like reactive code
@@ -315,8 +287,10 @@ public class ReportService {
 ```
 
 **Do NOT use with virtual threads:**
-- `synchronized` blocks holding across blocking calls (use `ReentrantLock` instead)
+- On Java 21–23, `synchronized` blocks around blocking calls: they pin the carrier thread, so use `ReentrantLock` there. Java 24+ no longer pins them (JEP 491).
 - Thread-local heavy frameworks (check compatibility first)
+
+**When to still use WebFlux:** streaming responses, SSE, WebSocket, or when you need backpressure.
 
 ## Text Blocks (Java 15+)
 
@@ -376,6 +350,6 @@ User oldest = users.getLast();
 | **Lombok** (targeted) | Services, components, non-entity classes; safe subset on entities (`@Getter`, `@Setter`, `@NoArgsConstructor`, `@Builder` on a constructor) | `@Data`/`@EqualsAndHashCode`/`@ToString`/`@Value` on entities, DTOs (use records) |
 | **Sealed classes** | Closed type hierarchies, domain events | Open extension needed |
 | **Pattern matching switch** | Handling sealed types, replacing if-else chains | Simple equality checks |
-| **Virtual threads** | High-concurrency blocking I/O | CPU-bound work, `synchronized` over I/O |
+| **Virtual threads** | High-concurrency blocking I/O | CPU-bound work, `synchronized` over I/O on Java 21–23 |
 | **Text blocks** | JPQL queries, JSON test data, SQL | Single-line strings |
 | **SequencedCollections** | First/last access on ordered collections | Unordered sets/maps |

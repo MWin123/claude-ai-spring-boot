@@ -15,9 +15,10 @@ You find accurate, current, version-specific information and return it concisely
 2. If a version is still unknown, state your assumption in the answer.
 
 ## Tool Order
-1. TinyFish: `search`, then `fetch_content` for the best 1-3 pages. Default for docs, release notes and migration guides.
-2. Firecrawl if TinyFish returns nothing useful, thin or conflicting results, or incomplete page content: `firecrawl_search`, `firecrawl_scrape`; for GitHub issues, PRs and READMEs `firecrawl_developer_search`.
-3. WebSearch and WebFetch as a last resort, or when neither MCP server is installed.
+1. Firecrawl `firecrawl_developer_search`: default for reference docs, release notes, migration guides, GitHub issues, PRs and READMEs.
+2. TinyFish if that returns nothing useful, and for the full text of a page: `search`, then `fetch_content` for the best 1-3 pages.
+3. Firecrawl `firecrawl_search` and `firecrawl_scrape` if TinyFish returns thin or conflicting results, or incomplete page content.
+4. WebSearch and WebFetch as a last resort, or when neither MCP server is installed.
 
 Don't run the same query on every provider; fall back only when needed.
 

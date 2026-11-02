@@ -4,7 +4,7 @@ Production-ready skills and agents for building Spring Boot 4.x / Java 21+ appli
 
 ## Installation
 
-Run the setup script from a Spring Boot project that uses Maven or Gradle (it needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise, so create a new project first, e.g. with Spring Initializr). It copies `agents/`, `skills/` and `config/settings.json` into `.claude/` and `config/CLAUDE.md` and `config/.gitignore` into the project root:
+Run the setup script from a Spring Boot project that uses Maven or Gradle (it needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise, so create a new project first, e.g. with Spring Initializr). It copies `agents/`, `skills/` and `config/settings.json` into `.claude/` and `config/CLAUDE.md` into the project root, with the project name (Maven `artifactId`, or Gradle `rootProject.name`, else the directory name) as its top heading. The project keeps its own `.gitignore` (Spring Initializr generates one):
 
 ```bash
 cd my-project
@@ -17,9 +17,9 @@ Or pass the project directory explicitly from anywhere:
 /path/to/claude-ai-spring-boot/setup.sh /path/to/my-project
 ```
 
-The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched; an existing `.gitignore` keeps its rules and gets only the template's missing ones.
+The script replaces an existing `CLAUDE.md` after saving it as `CLAUDE.md.bak` (or a timestamped `CLAUDE.md.<time>.bak` if that exists; merge back any project-specific rules), and overwrites existing agent and skill files with the same names in `.claude/`. Nothing is ever removed, so an agent or skill that a later template version renames or deletes stays in `.claude/` after a re-run; delete it by hand. An existing `.claude/settings.json` is kept untouched.
 
-Claude Code loads `.claude/agents/` and `.claude/skills/` from the project automatically, and `CLAUDE.md` from the project root. Start `claude` in the project directory to use them.
+Claude Code loads `.claude/agents/` and `.claude/skills/` from the project automatically, and `CLAUDE.md` from the project root. Start `claude` in the project directory to use them. Started in a subdirectory, Claude Code treats the `conventions` import in `CLAUDE.md` as external: it asks once before loading it (`claude -p` skips it), and without it `CLAUDE.md` tells Claude to load the skill.
 
 ## What's Included
 
@@ -29,14 +29,14 @@ Subagents that Claude Code delegates to when a fresh context helps:
 
 | Agent | Purpose |
 |-------|---------|
-| `code-reviewer` | Thorough review of a finished feature or security audit: correctness, security, performance, design (use sparingly) |
+| `code-reviewer` | Thorough review of a finished feature or security audit: correctness, security, performance, design; shown in the chat and posted to the PR as a checkbox list (use sparingly) |
 | `quick-reviewer` | Fast review of a single commit or file: mechanical checks only |
 | `tests` | Runs the test suite, returns only failing tests (max 20 lines) |
 | `docs-researcher` | Researches current, version-specific docs, release notes and GitHub issues; returns a short, sourced answer |
 
 The main agent does the development, migration and deployment work itself with the skills below; subagents run only where a fresh context pays off (noisy test output, independent review, web research).
 
-`docs-researcher` prefers the TinyFish and Firecrawl MCP servers, installed under the names `TinyFish` and `Firecrawl`, and falls back to the built-in WebSearch/WebFetch without them.
+`docs-researcher` and the Tools section of `CLAUDE.md` prefer the MCP servers `TinyFish`, `Firecrawl` and `github` (installed under those names) and fall back to the built-in WebSearch/WebFetch without them.
 
 ### Skills (`skills/`)
 
@@ -44,11 +44,11 @@ Reusable knowledge that Claude loads contextually:
 
 | Skill | What it teaches |
 |-------|-----------------|
-| `conventions` | Mandatory project rules: records first, targeted Lombok, constructor injection, RestClient, testing standards |
-| `spring-boot` | Core Spring Boot development with 5 reference guides (web, data, security, cloud, Boot 4 changes) |
+| `conventions` | Mandatory project rules, loaded with `CLAUDE.md`: records first, targeted Lombok, constructor injection, RestClient, testing standards |
+| `spring-boot` | Core Spring Boot development with 7 reference guides (OpenAPI, web, Swagger UI, data, security, cloud, Boot 4 changes) |
 | `code-quality` | Clean code principles and Java pitfalls (null safety, exceptions, transactions) for writing and refactoring |
 | `design-patterns` | Classic patterns (Factory, Builder, Strategy) + enterprise (Saga, Outbox, CQRS) |
-| `testing-patterns` | JUnit 5, Mockito, MockMvc, WebTestClient, RestTestClient, `@DataJpaTest` on H2 or Testcontainers with `@ServiceConnection` |
+| `testing-patterns` | JUnit 5, Mockito, MockMvc, WebTestClient, RestTestClient, `@DataJpaTest` on H2 or Testcontainers with `@ServiceConnection`; 1 reference guide (integration tests) |
 | `java-modern` | Java 21+ features: records, Lombok rules, sealed classes, pattern matching, virtual threads |
 | `jpa-patterns` | JPA/Hibernate pitfalls (N+1, lazy loading), Hibernate 7, optimistic locking |
 | `logging-patterns` | Structured JSON logging, SLF4J, MDC, AI-friendly formats |
@@ -70,7 +70,7 @@ The `conventions` skill and the project `CLAUDE.md` (project name, package, buil
 - **Testcontainers** with `@ServiceConnection` (not `@DynamicPropertySource`)
 - **Jakarta Persistence** (not `javax.persistence`)
 - **Maven or Gradle** — detected once per session from `pom.xml` or `build.gradle(.kts)`/`settings.gradle(.kts)`; build and test commands, name, group and version follow the detected tool
-- **Project name and package** — base Java package = group ID; the project name (`artifactId` or Gradle `rootProject.name`) is the folder name in lowercase kebab-case, e.g. `MyApp` → `my-app` (an existing name is kept; asked about if it doesn't match)
+- **Project name and package** — base Java package = group ID; the project name is the top heading of `CLAUDE.md`, taken from the build file by `setup.sh` (never renamed silently; Claude asks before using a name that isn't lowercase kebab-case for images or Kubernetes)
 - **CI pipeline** — not generated unless asked; an existing setup is detected and extended
 - **Docker Compose** for local dependencies
 
@@ -94,7 +94,7 @@ The `deployment` skill covers:
 
 ## Usage
 
-After copying the files, describe what you want to build — Claude will use the skills and agents automatically. `CLAUDE.md` tells it to load `conventions` before writing code, to follow the `spring-boot` workflow for features, and to hand test runs, reviews and web research to the agents:
+After copying the files, describe what you want to build — Claude will use the skills and agents automatically. `CLAUDE.md` loads the `conventions` rules into every session, tells it to follow the `spring-boot` workflow for features, and to hand test runs, reviews and web research to the agents:
 
 ```bash
 cd my-project
@@ -177,11 +177,15 @@ You can also invoke skills and agents directly:
 │   │       ├── boot4.md
 │   │       ├── cloud.md
 │   │       ├── data.md
+│   │       ├── openapi.md
 │   │       ├── security.md
+│   │       ├── swagger-ui.md
 │   │       └── web.md
-│   └── testing-patterns/SKILL.md
+│   └── testing-patterns/
+│       ├── SKILL.md
+│       └── references/
+│           └── integration.md
 ├── config/                 # copied into the project
-│   ├── .gitignore          # Spring Boot ignore rules (root of the project)
 │   ├── CLAUDE.md           # project rules (root of the project)
 │   └── settings.json       # .claude/settings.json
 ├── tests/                  # checks for this template, not copied by setup.sh
@@ -193,7 +197,7 @@ You can also invoke skills and agents directly:
 
 ## Tests
 
-The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior, agent and skill frontmatter (only fields Claude Code knows, skill listing length, SKILL.md under 500 lines), references between files (sections, files, workflow steps, skill and agent names, reference files listed in their skill, every skill reachable and every agent routed from `CLAUDE.md`, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
+The `tests/` folder checks the template itself and stays in this repository: `setup.sh` behavior (including the project-name heading and that the installed `CLAUDE.md`'s imports resolve), agent and skill frontmatter (only fields Claude Code knows, skill listing length, SKILL.md under 500 lines), references between files (sections, files, workflow steps, skill and agent names, reference files listed in their skill, every skill reachable and every agent routed from `CLAUDE.md`, README tables and tree), YAML/JSON examples, example code (no Boot 3 leftovers, controllers implement generated `*Api` interfaces, exception handlers return `ProblemDetail`), the `tests` agent's commands (no marker file, nothing chained, a local start time), and facts repeated across files (docs security matchers, library versions). GitHub Actions runs them with `shellcheck setup.sh` on every pull request. Locally:
 
 ```bash
 pip install -r tests/requirements.txt
