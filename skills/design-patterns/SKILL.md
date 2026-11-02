@@ -1,16 +1,12 @@
 ---
 name: design-patterns
 description: Design patterns with Java examples - classic (Factory, Builder, Strategy, Observer, Decorator, Adapter) and enterprise/microservices (Saga, Outbox, CQRS). Use when user asks about patterns, designing extensible components, or distributed transaction strategies.
+when_to_use: 'Implementing a named pattern; designing extensible components; refactoring rigid code; dual writes or distributed transactions between services.'
 ---
 
 # Design Patterns Skill
 
 Quick reference for common design patterns in Java.
-
-## When to Use
-- User asks to implement a specific pattern
-- Designing extensible/flexible components
-- Refactoring rigid code
 
 ## Quick Reference: When to Use What
 
@@ -26,55 +22,35 @@ Quick reference for common design patterns in Java.
 | Distributed transaction across services | **Saga** | Multi-service business process |
 | Separate read/write models | **CQRS** | Heavy read/write ratio skew |
 
----
-
 ## Creational Patterns
 
 ### Builder
 **Problem:** Telescoping constructors, many optional parameters
 
 ```java
-// ✅ Builder pattern
-public class User {
-    private final String name;  // required
-    private final String email; // required
-    private final int age;      // optional
+// ✅ Many optional parameters: Lombok @Builder works on records
+@Builder
+public record SearchCriteria(String name, String email, Integer minAge, Integer maxAge) { }
 
-    private User(Builder builder) {
-        this.name = builder.name;
-        this.email = builder.email;
-        this.age = builder.age;
+SearchCriteria criteria = SearchCriteria.builder().name("John").minAge(18).build();
+
+// ✅ Few optional parameters: record with compact constructor + static factory (no builder needed)
+public record User(String name, String email, int age) {
+    public User {                                   // validation in compact constructor
+        Objects.requireNonNull(name);
+        Objects.requireNonNull(email);
     }
 
-    public static Builder builder(String name, String email) {
-        return new Builder(name, email);
+    public static User of(String name, String email) {
+        return new User(name, email, 0);             // default for optional field
     }
 
-    public static class Builder {
-        private final String name;
-        private final String email;
-        private int age = 0;
-
-        private Builder(String name, String email) {
-            this.name = name;
-            this.email = email;
-        }
-
-        public Builder age(int age) {
-            this.age = age;
-            return this;
-        }
-
-        public User build() {
-            return new User(this);
-        }
+    public User withAge(int age) {                   // "wither" for a single optional field
+        return new User(name, email, age);
     }
 }
 
-// Usage
-User user = User.builder("John", "john@example.com")
-    .age(30)
-    .build();
+User user = User.of("John", "john@example.com").withAge(30);
 ```
 
 ### Factory
@@ -117,8 +93,6 @@ public class NotificationFactory {
 }
 ```
 
----
-
 ## Behavioral Patterns
 
 ### Strategy
@@ -130,25 +104,24 @@ public interface PaymentStrategy {
     void pay(BigDecimal amount);
 }
 
-public class CreditCardPayment implements PaymentStrategy {
-    private final String cardNumber;
-
-    public CreditCardPayment(String cardNumber) {
-        this.cardNumber = cardNumber;
-    }
-
+public record CreditCardPayment(String cardNumber) implements PaymentStrategy {
     @Override
     public void pay(BigDecimal amount) {
-        System.out.println("Paid " + amount + " with card " + cardNumber);
+        System.out.println("Paid " + amount + " with " + this);
+    }
+
+    // records print all components; never log a full card number
+    @Override
+    public String toString() {
+        String last4 = cardNumber == null || cardNumber.length() < 4
+            ? "" : cardNumber.substring(cardNumber.length() - 4);
+        return "CreditCardPayment[****" + last4 + "]";
     }
 }
 
+@Setter
 public class ShoppingCart {
     private PaymentStrategy paymentStrategy;
-
-    public void setPaymentStrategy(PaymentStrategy strategy) {
-        this.paymentStrategy = strategy;
-    }
 
     public void checkout(BigDecimal total) {
         paymentStrategy.pay(total);
@@ -159,12 +132,7 @@ public class ShoppingCart {
 cart.setPaymentStrategy(new CreditCardPayment("4111..."));
 cart.checkout(new BigDecimal("99.99"));
 
-// Functional variant (Java 8+)
-@FunctionalInterface
-public interface PaymentStrategy {
-    void pay(BigDecimal amount);
-}
-
+// Functional variant: PaymentStrategy has one method (mark it @FunctionalInterface), so a lambda implements it
 PaymentStrategy creditCard = amount -> System.out.println("Card: " + amount);
 cart.setPaymentStrategy(creditCard);
 ```
@@ -177,11 +145,13 @@ cart.setPaymentStrategy(creditCard);
 public record OrderPlacedEvent(Order order) {}
 
 @Service
+@RequiredArgsConstructor
 public class OrderService {
+    private final OrderRepository orderRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public void placeOrder(Order order) {
-        saveOrder(order);
+        orderRepository.save(order);
         eventPublisher.publishEvent(new OrderPlacedEvent(order));
     }
 }
@@ -197,14 +167,12 @@ public class InventoryListener {
 @Component
 public class EmailListener {
     @EventListener
-    @Async
+    @Async                    // needs @EnableAsync on a @Configuration class, or it runs on the caller's thread
     public void handleOrderPlaced(OrderPlacedEvent event) {
         // Send email
     }
 }
 ```
-
----
 
 ## Structural Patterns
 
@@ -223,20 +191,24 @@ public class SimpleCoffee implements Coffee {
     public BigDecimal getCost() { return new BigDecimal("2.00"); }
 }
 
-public abstract class CoffeeDecorator implements Coffee {
-    protected final Coffee coffee;
-    public CoffeeDecorator(Coffee coffee) { this.coffee = coffee; }
-}
-
-public class MilkDecorator extends CoffeeDecorator {
-    public MilkDecorator(Coffee coffee) { super(coffee); }
-
+// Decorators as records: the wrapped coffee is the only state
+public record MilkDecorator(Coffee coffee) implements Coffee {
     public String getDescription() {
         return coffee.getDescription() + ", Milk";
     }
 
     public BigDecimal getCost() {
         return coffee.getCost().add(new BigDecimal("0.50"));
+    }
+}
+
+public record SugarDecorator(Coffee coffee) implements Coffee {
+    public String getDescription() {
+        return coffee.getDescription() + ", Sugar";
+    }
+
+    public BigDecimal getCost() {
+        return coffee.getCost().add(new BigDecimal("0.20"));
     }
 }
 
@@ -261,9 +233,7 @@ public class LegacyAudioPlayer {
 }
 
 // Adapter
-public class Mp3PlayerAdapter implements MediaPlayer {
-    private final LegacyAudioPlayer legacyPlayer = new LegacyAudioPlayer();
-
+public record Mp3PlayerAdapter(LegacyAudioPlayer legacyPlayer) implements MediaPlayer {
     @Override
     public void play(String filename) {
         legacyPlayer.playMp3(filename);
@@ -271,11 +241,9 @@ public class Mp3PlayerAdapter implements MediaPlayer {
 }
 
 // Usage
-MediaPlayer player = new Mp3PlayerAdapter();
+MediaPlayer player = new Mp3PlayerAdapter(new LegacyAudioPlayer());
 player.play("song.mp3");
 ```
-
----
 
 ## Enterprise / Microservices Patterns
 
@@ -286,13 +254,16 @@ player.play("song.mp3");
 // ✅ Outbox pattern - write event to DB in same transaction, poll and publish later
 @Entity
 @Table(name = "outbox_events")
+@Getter
+@Setter
 public class OutboxEvent {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
-    private String aggregateType;
-    private String aggregateId;
+    private String topic;
+    private String aggregateId;              // Kafka key: one order's events stay in order
     private String eventType;
 
     @Column(columnDefinition = "TEXT")
@@ -300,57 +271,57 @@ public class OutboxEvent {
 
     private LocalDateTime createdAt;
     private boolean published;
-
-    // getters/setters
 }
 
+public record OrderCreatedEvent(Long orderId, BigDecimal amount) {}
+
 @Service
+@RequiredArgsConstructor
 public class OrderService {
     private final OrderRepository orderRepository;
     private final OutboxEventRepository outboxRepository;
-
-    public OrderService(OrderRepository orderRepository, OutboxEventRepository outboxRepository) {
-        this.orderRepository = orderRepository;
-        this.outboxRepository = outboxRepository;
-    }
+    private final JsonMapper jsonMapper;
 
     @Transactional
     public Order createOrder(OrderRequest request) {
         Order order = new Order();
-        order.setStatus(OrderStatus.CREATED);
+        order.setStatus(OrderStatus.PENDING);
+        order.setTotalAmount(request.amount());
         order = orderRepository.save(order);
 
         OutboxEvent event = new OutboxEvent();
-        event.setAggregateType("Order");
+        event.setTopic("order-events");
         event.setAggregateId(order.getId().toString());
         event.setEventType("OrderCreated");
-        event.setPayload(toJson(order));
+        event.setPayload(jsonMapper.writeValueAsString(new OrderCreatedEvent(order.getId(), order.getTotalAmount())));
         event.setCreatedAt(LocalDateTime.now());
-        event.setPublished(false);
         outboxRepository.save(event);
-
         return order;
     }
 }
 
-// Poller publishes events and marks them as published
+public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> {
+    // SKIP LOCKED (PostgreSQL, MySQL 8): each pod claims a different batch
+    @Query(value = """
+        SELECT * FROM outbox_events WHERE published = false
+        ORDER BY id LIMIT :limit FOR UPDATE SKIP LOCKED
+        """, nativeQuery = true)
+    List<OutboxEvent> lockUnpublished(int limit);
+}
+
+// Poller publishes events and marks them as published; needs @EnableScheduling on a @Configuration class
 @Component
+@RequiredArgsConstructor
 public class OutboxPoller {
     private final OutboxEventRepository outboxRepository;
     private final KafkaTemplate<String, String> kafka;
 
-    public OutboxPoller(OutboxEventRepository outboxRepository,
-                        KafkaTemplate<String, String> kafka) {
-        this.outboxRepository = outboxRepository;
-        this.kafka = kafka;
-    }
-
     @Scheduled(fixedDelay = 1000)
     @Transactional
     public void publishPendingEvents() {
-        List<OutboxEvent> events = outboxRepository.findByPublishedFalse();
-        for (OutboxEvent event : events) {
-            kafka.send(event.getAggregateType(), event.getAggregateId(), event.getPayload());
+        for (OutboxEvent event : outboxRepository.lockUnpublished(100)) {
+            // wait for the broker; a failure rolls back the batch, which goes again (at-least-once)
+            kafka.send(event.getTopic(), event.getAggregateId(), event.getPayload()).join();
             event.setPublished(true);
         }
     }
@@ -362,52 +333,34 @@ public class OutboxPoller {
 
 ```java
 // ✅ Choreography-based saga - each service listens and reacts
-// Order Service publishes OrderCreated
-@Service
-public class OrderService {
-    private final ApplicationEventPublisher eventPublisher;
-    private final OrderRepository orderRepository;
-
-    public OrderService(ApplicationEventPublisher eventPublisher, OrderRepository orderRepository) {
-        this.eventPublisher = eventPublisher;
-        this.orderRepository = orderRepository;
-    }
-
-    @Transactional
-    public Order createOrder(OrderRequest request) {
-        Order order = new Order();
-        order.setStatus(OrderStatus.PENDING);
-        order = orderRepository.save(order);
-        eventPublisher.publishEvent(new OrderCreatedEvent(order.getId(), request.items()));
-        return order;
-    }
-
-    @Transactional
-    public void handlePaymentFailed(Long orderId) {
-        Order order = orderRepository.findById(orderId).orElseThrow();
-        order.setStatus(OrderStatus.CANCELLED);
-        orderRepository.save(order);
-    }
+// Order Service: createOrder (Outbox above) saves a PENDING order and sends OrderCreatedEvent to "order-events"
+@Transactional
+public void handlePaymentFailed(Long orderId) {                  // compensating action in OrderService
+    Order order = orderRepository.findById(orderId).orElseThrow();
+    order.setStatus(OrderStatus.CANCELLED);
 }
 
 // Payment Service listens to OrderCreated, publishes PaymentCompleted or PaymentFailed
 @Component
+@RequiredArgsConstructor
 public class PaymentEventHandler {
     private final PaymentService paymentService;
-
-    public PaymentEventHandler(PaymentService paymentService) {
-        this.paymentService = paymentService;
-    }
 
     @KafkaListener(topics = "order-events")
     public void handleOrderCreated(OrderCreatedEvent event) {
         try {
-            paymentService.charge(event.orderId(), event.amount());
+            paymentService.charge(event.orderId(), event.amount());   // idempotent: the outbox may resend
             // Publish PaymentCompleted
         } catch (PaymentException e) {
             // Publish PaymentFailed → triggers compensating action
         }
     }
+}
+
+// The outbox sends JSON strings; without this bean the listener fails with "Cannot convert from [java.lang.String]"
+@Bean
+RecordMessageConverter messageConverter() {
+    return new StringJacksonJsonMessageConverter();             // Jackson 3
 }
 ```
 
@@ -427,15 +380,10 @@ public class PaymentEventHandler {
 // Command side - normalized, validates business rules
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class OrderCommandService {
     private final OrderRepository orderRepository;
     private final ApplicationEventPublisher eventPublisher;
-
-    public OrderCommandService(OrderRepository orderRepository,
-                                ApplicationEventPublisher eventPublisher) {
-        this.orderRepository = orderRepository;
-        this.eventPublisher = eventPublisher;
-    }
 
     public Long createOrder(CreateOrderCommand command) {
         Order order = new Order();
@@ -443,7 +391,7 @@ public class OrderCommandService {
         order.setStatus(OrderStatus.CREATED);
         command.items().forEach(order::addItem);
         order = orderRepository.save(order);
-        eventPublisher.publishEvent(new OrderCreatedEvent(order));
+        eventPublisher.publishEvent(new OrderCreatedEvent(order.getId(), order.getTotalAmount()));
         return order.getId();
     }
 }
@@ -451,16 +399,13 @@ public class OrderCommandService {
 // Query side - denormalized, optimized for reads
 @Service
 @Transactional(readOnly = true)
+@RequiredArgsConstructor
 public class OrderQueryService {
     private final OrderViewRepository viewRepository;
 
-    public OrderQueryService(OrderViewRepository viewRepository) {
-        this.viewRepository = viewRepository;
-    }
-
     public OrderView findById(Long id) {
         return viewRepository.findById(id)
-            .orElseThrow(() -> new EntityNotFoundException("Order not found"));
+            .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
     }
 
     public Page<OrderView> findByCustomer(Long customerId, Pageable pageable) {
@@ -471,6 +416,8 @@ public class OrderQueryService {
 // Read model - flat, pre-joined
 @Entity
 @Table(name = "order_views")
+@Getter
+@Setter                       // id is copied from the order, not generated, so it keeps a setter
 public class OrderView {
     @Id
     private Long id;
@@ -480,29 +427,26 @@ public class OrderView {
     private BigDecimal totalAmount;
     private int itemCount;
     private LocalDateTime createdAt;
-
-    // getters/setters
 }
 
-// Projection updater - keeps query model in sync
+// Projection updater - runs after the command commits, so a failure here can't roll back the order
 @Component
+@RequiredArgsConstructor
 public class OrderViewUpdater {
-
+    private final OrderRepository orderRepository;
     private final OrderViewRepository viewRepository;
 
-    public OrderViewUpdater(OrderViewRepository viewRepository) {
-        this.viewRepository = viewRepository;
-    }
-
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)      // the command's transaction is already over
     public void on(OrderCreatedEvent event) {
+        Order order = orderRepository.findById(event.orderId()).orElseThrow();
         OrderView view = new OrderView();
-        view.setId(event.order().getId());
-        view.setCustomerId(event.order().getCustomerId());
-        view.setStatus(event.order().getStatus().name());
-        view.setTotalAmount(event.order().getTotalAmount());
-        view.setItemCount(event.order().getItems().size());
-        view.setCreatedAt(event.order().getCreatedAt());
+        view.setId(order.getId());
+        view.setCustomerId(order.getCustomerId());
+        view.setStatus(order.getStatus().name());
+        view.setTotalAmount(order.getTotalAmount());
+        view.setItemCount(order.getItems().size());
+        view.setCreatedAt(order.getCreatedAt());
         viewRepository.save(view);
     }
 }
@@ -514,8 +458,6 @@ public class OrderViewUpdater {
 - Different scaling requirements for reads vs writes
 
 **When NOT to use:** Simple CRUD applications - adds unnecessary complexity.
-
----
 
 ## Pattern Selection Guide
 

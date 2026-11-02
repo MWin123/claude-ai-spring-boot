@@ -1,20 +1,12 @@
 ---
 name: logging-patterns
 description: Java logging best practices with SLF4J, structured logging (JSON), and MDC for request tracing. Includes AI-friendly log formats for Claude Code debugging. Use when user asks about logging, debugging application flow, or analyzing logs.
+when_to_use: '"add logging", "improve logs", "debug this"; analyzing application flow from logs; structured JSON logging; request tracing with correlation IDs.'
 ---
 
 # Logging Patterns Skill
 
 **Rule: JSON is the default log format.** Plain text logging is only for local development with `human-logs` profile. Production, CI/CD, and Kubernetes environments must use structured JSON.
-
-## When to Use
-- User says "add logging" / "improve logs" / "debug this"
-- Analyzing application flow from logs
-- Setting up structured logging (JSON)
-- Request tracing with correlation IDs
-- AI/Claude Code needs to analyze application behavior
-
----
 
 ## AI-Friendly Logging
 
@@ -39,20 +31,7 @@ description: Java logging best practices with SLF4J, structured logging (JSON), 
 
 ### Recommended Setup for AI-Assisted Development
 
-```yaml
-# application.yml - JSON by default
-logging:
-  structured:
-    format:
-      console: logstash  # Spring Boot 4.x
-
-# When YOU need to read logs manually:
-# Option 1: Use jq
-# tail -f app.log | jq .
-
-# Option 2: Switch profile temporarily
-# java -jar app.jar --spring.profiles.active=human-logs
-```
+The default `application.yml` in the `conventions` skill sets `logging.structured.format.console: logstash`. To read logs yourself, pipe them through `jq` ("Reading Logs with AI/Claude Code") or switch to the `human-logs` profile ("Profile-Based Switching").
 
 ### Log Format Optimized for AI Analysis
 
@@ -60,7 +39,7 @@ logging:
 {
   "timestamp": "2026-01-29T10:15:30.123Z",
   "level": "INFO",
-  "logger": "pl.piomin.services.OrderService",
+  "logger": "com.example.OrderService",
   "message": "Order created",
   "requestId": "req-abc123",
   "traceId": "trace-xyz",
@@ -82,14 +61,15 @@ logging:
 When asking AI to analyze logs:
 
 ```bash
+# The console is JSON, one object per line: pipe it into jq (locally: java -jar target/<app>.jar | jq ...)
 # Get recent errors
-cat app.log | jq 'select(.level == "ERROR")' | tail -20
+kubectl logs deploy/<app-name> | jq 'select(.level == "ERROR")' | tail -20
 
 # Follow specific request
-cat app.log | jq 'select(.requestId == "req-abc123")'
+kubectl logs deploy/<app-name> | jq 'select(.requestId == "req-abc123")'
 
 # Find slow operations
-cat app.log | jq 'select(.duration_ms > 1000)'
+kubectl logs deploy/<app-name> | jq 'select(.duration_ms > 1000)'
 ```
 
 AI can then:
@@ -98,8 +78,6 @@ AI can then:
 3. Identify exactly where errors occurred
 4. Measure timing between steps
 
----
-
 ## Quick Setup (Spring Boot 4.x)
 
 ### Native Structured Logging
@@ -107,7 +85,7 @@ AI can then:
 Spring Boot 4.x has built-in JSON logging — no extra dependencies required.
 
 ```yaml
-# application.yml — this is the REQUIRED default for every app
+# application.yml (already in the conventions default)
 logging:
   structured:
     format:
@@ -133,14 +111,12 @@ management:
 logging:
   structured:
     format:
-      console: logstash
-  pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+      console: logstash   # the JSON formats add traceId/spanId from the MDC; logging.pattern.level has no effect
 ```
 
 Output:
 ```json
-{"@timestamp":"2026-01-29T10:15:30.123Z","level":"INFO","logger_name":"pl.piomin.services.OrderService","message":"Order created","traceId":"abc123def456","spanId":"789xyz","service.name":"order-service"}
+{"@timestamp":"2026-01-29T10:15:30.123Z","level":"INFO","logger_name":"com.example.OrderService","message":"Order created","traceId":"abc123def456","spanId":"789xyz","service.name":"order-service"}
 ```
 
 The `traceId` field in JSON logs is the same trace ID visible in Jaeger, Tempo, or any OTel-compatible backend — enabling direct log-to-trace correlation.
@@ -148,16 +124,7 @@ The `traceId` field in JSON logs is the same trace ID visible in Jaeger, Tempo, 
 ### Profile-Based Switching
 
 ```yaml
-# application.yml (default - JSON for AI/prod)
-spring:
-  profiles:
-    default: json-logs
-
----
-spring:
-  config:
-    activate:
-      on-profile: json-logs
+# application.yml: JSON under every profile (kubernetes, prod, ...) unless human-logs is active
 logging:
   structured:
     format:
@@ -168,8 +135,10 @@ spring:
   config:
     activate:
       on-profile: human-logs
-# No structured format = human-readable default
 logging:
+  structured:
+    format:
+      console: ""   # empty turns structured logging off
   pattern:
     console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
 ```
@@ -180,90 +149,40 @@ logging:
 ./mvnw spring-boot:run
 
 # Human-readable when needed
-./mvnw spring-boot:run -Dspring.profiles.active=human-logs
+./mvnw spring-boot:run -Dspring-boot.run.profiles=human-logs
+./gradlew bootRun --args='--spring.profiles.active=human-logs'   # Gradle
 ```
 
----
+### Custom Fields
 
-## Setup for Spring Boot < 3.4 (Legacy)
-
-### Logstash Logback Encoder
-
-**pom.xml:**
-```xml
-<dependency>
-    <groupId>net.logstash.logback</groupId>
-    <artifactId>logstash-logback-encoder</artifactId>
-    <version>7.4</version>
-</dependency>
-```
-
-**logback-spring.xml:**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<configuration>
-
-    <!-- JSON (default) -->
-    <springProfile name="!human-logs">
-        <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-                <includeMdcKeyName>requestId</includeMdcKeyName>
-                <includeMdcKeyName>userId</includeMdcKeyName>
-            </encoder>
-        </appender>
-        <root level="INFO">
-            <appender-ref ref="JSON"/>
-        </root>
-    </springProfile>
-
-    <!-- Human-readable (optional) -->
-    <springProfile name="human-logs">
-        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder>
-                <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
-            </encoder>
-        </appender>
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-        </root>
-    </springProfile>
-
-</configuration>
-```
-
-### Adding Custom Fields (Logstash Encoder)
+Boot's JSON formats write SLF4J key-value pairs as separate JSON members, so no Logstash encoder is needed:
 
 ```java
-import static net.logstash.logback.argument.StructuredArguments.kv;
-
-// Fields appear as separate JSON keys
-log.info("Order created",
-    kv("orderId", order.getId()),
-    kv("userId", user.getId()),
-    kv("total", order.getTotal()),
-    kv("step", "order_created")
-);
-
-// Output:
-// {"message":"Order created","orderId":123,"userId":"u-456","total":99.99,"step":"order_created"}
+log.atInfo()
+    .addKeyValue("orderId", order.getId())
+    .addKeyValue("total", order.getTotal())
+    .log("Order created");
+// {"message":"Order created","orderId":123,"total":99.99,...}
 ```
 
----
+Fields for every line (e.g. the environment) go in `logging.structured.json.add.<name>: <value>`.
 
 ## SLF4J Basics
 
 ### Logger Declaration
 
 ```java
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 @Service
+@Slf4j
 public class OrderService {
-    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
-
     // use `log` directly for logging
 }
+```
+
+Without Lombok:
+
+```java
+private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 ```
 
 ### Parameterized Logging
@@ -308,8 +227,6 @@ log.error("Payment failed for order {}: {}", order.getId(), e);
 | `DEBUG` | Technical details. SQL queries, HTTP requests, cache hits |
 | `TRACE` | Verbose internals. Method entry/exit, loop iterations |
 
----
-
 ## MDC (Mapped Diagnostic Context)
 
 MDC attaches context (request ID, user ID) to every log line in the current thread automatically.
@@ -345,8 +262,8 @@ public class MdcFilter implements Filter {
 
 ```java
 @Service
+@Slf4j
 public class OrderService {
-    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     public Order createOrder(OrderRequest request) {
         MDC.put("userId", request.userId());
@@ -387,16 +304,14 @@ public class AsyncConfig {
 }
 ```
 
----
-
 ## Quick Reference
 
 | Pattern | Use |
 |---------|-----|
-| `LoggerFactory.getLogger(MyClass.class)` | Declare logger (no `@Slf4j`) |
+| `@Slf4j` | Declare logger (always, when the class can use Lombok); `LoggerFactory.getLogger(MyClass.class)` otherwise |
 | `log.info("msg {}", var)` | Parameterized logging |
 | `log.error("msg {}", var, exception)` | Log with stack trace |
 | `MDC.put("key", "value")` | Add context to all logs in thread |
 | `MDC.clear()` | Clean up in `finally` block |
 | `logging.structured.format.console: logstash` | Enable JSON (Spring Boot 4.x) |
-| `kv("field", value)` | Structured argument (Logstash encoder) |
+| `log.atInfo().addKeyValue("field", value).log("msg")` | Structured field (separate JSON member) |
