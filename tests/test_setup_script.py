@@ -163,6 +163,7 @@ def test_config_claude_md_starts_with_the_placeholder():
         ("settings.gradle", "pluginManagement {}\nrootProject.name = 'order-service'\n"),
         ("settings.gradle.kts", 'rootProject.name = "order-service"\n'),
     ],
+    ids=["pom-multiline", "pom-one-line", "settings.gradle", "settings.gradle.kts"],
 )
 def test_heading_is_the_project_name(tmp_path, build_file, content):
     (tmp_path / build_file).write_text(content)
