@@ -1,33 +1,24 @@
 ---
 name: jpa-patterns
-description: JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries). Use when user has JPA performance issues, LazyInitializationException, or asks about entity relationships and fetching strategies.
+description: JPA/Hibernate patterns and common pitfalls (N+1, lazy loading, transactions, queries).
+when_to_use: '"N+1 problem", "too many queries", one extra query per row or per entity when loading a list or its associations; LazyInitializationException; fetch strategies (EAGER vs LAZY); transaction issues; entity relationship design; query optimization.'
 ---
 
 # JPA Patterns Skill
 
 Best practices and common pitfalls for JPA/Hibernate in Spring applications.
 
-## When to Use
-- User mentions "N+1 problem" / "too many queries"
-- LazyInitializationException errors
-- Questions about fetch strategies (EAGER vs LAZY)
-- Transaction management issues
-- Entity relationship design
-- Query optimization
-
----
-
 ## Quick Reference: Common Problems
 
 | Problem | Symptom | Solution |
 |---------|---------|----------|
 | N+1 queries | Many SELECT statements | JOIN FETCH, @EntityGraph |
-| LazyInitializationException | Error outside transaction | Open Session in View, DTO projection, JOIN FETCH |
+| LazyInitializationException | Error outside transaction | JOIN FETCH, DTO projection, mapping inside the `@Transactional` service; never re-enable Open Session in View (off in the `conventions` default `application.yml`) |
 | Slow queries | Performance issues | Pagination, projections, indexes |
 | Dirty checking overhead | Slow updates | Read-only transactions, DTOs |
 | Lost updates | Concurrent modifications | Optimistic locking (@Version) |
-
----
+| Deleted rows must stay | Hard deletes lose history | `@SoftDelete` |
+| UUID primary key | Sequential IDs leak or collide across services | `@GeneratedValue(strategy = GenerationType.UUID)` |
 
 ## N+1 Problem
 
@@ -60,7 +51,7 @@ for (Author author : authors) {
 // ✅ GOOD: Single query with JOIN FETCH
 public interface AuthorRepository extends JpaRepository<Author, Long> {
 
-    @Query("SELECT a FROM Author a JOIN FETCH a.books")
+    @Query("SELECT a FROM Author a LEFT JOIN FETCH a.books")   // LEFT: authors without books stay
     List<Author> findAllWithBooks();
 }
 
@@ -104,9 +95,15 @@ public class Author {
     @BatchSize(size = 25)  // Fetch 25 at a time
     private List<Book> books;
 }
+```
 
-// Or globally in application.properties
-spring.jpa.properties.hibernate.default_batch_fetch_size=25
+```yaml
+# Or globally in application.yml
+spring:
+  jpa:
+    properties:
+      hibernate:
+        default_batch_fetch_size: 25
 ```
 
 ### Detecting N+1
@@ -126,42 +123,13 @@ logging:
     org.hibernate.orm.jdbc.bind: TRACE
 ```
 
----
-
 ## Lazy Loading
 
-### FetchType Basics
-
-```java
-@Entity
-public class Order {
-
-    // LAZY: Load only when accessed (default for collections)
-    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)
-    private List<OrderItem> items;
-
-    // EAGER: Always load immediately (default for @ManyToOne, @OneToOne)
-    @ManyToOne(fetch = FetchType.EAGER)  // ⚠️ Usually bad
-    private Customer customer;
-}
-```
-
-### Best Practice: Default to LAZY
-
-```java
-// ✅ GOOD: Always use LAZY, fetch when needed
-@Entity
-public class Order {
-
-    @ManyToOne(fetch = FetchType.LAZY)  // Override EAGER default
-    private Customer customer;
-
-    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY)
-    private List<OrderItem> items;
-}
-```
+Declare every association `LAZY`: collections are lazy by default, but `@ManyToOne` and `@OneToOne` default to EAGER, so set `fetch = FetchType.LAZY` on them and fetch what a use case needs in its query.
 
 ### LazyInitializationException
+
+This needs `spring.jpa.open-in-view: false`. With Boot's default (`true`), the same code runs without an error and silently runs one extra query per lazy access.
 
 ```java
 // ❌ BAD: Accessing lazy field outside transaction
@@ -183,7 +151,7 @@ order.getItems().size();  // 💥 LazyInitializationException!
 **Solution 1: JOIN FETCH in query**
 ```java
 // ✅ Fetch needed associations in query
-@Query("SELECT o FROM Order o JOIN FETCH o.items WHERE o.id = :id")
+@Query("SELECT o FROM Order o LEFT JOIN FETCH o.items WHERE o.id = :id")
 Optional<Order> findByIdWithItems(@Param("id") Long id);
 ```
 
@@ -208,13 +176,11 @@ public class OrderService {
 // ✅ Avoid lazy loading entirely - query only what you need
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-    @Query("SELECT new pl.piomin.services.dto.OrderSummary(o.id, o.status, SIZE(o.items)) " +
+    @Query("SELECT new com.example.dto.OrderSummary(o.id, o.status, SIZE(o.items)) " +
            "FROM Order o WHERE o.id = :id")
     Optional<OrderSummary> findSummaryById(@Param("id") Long id);
 }
 ```
-
----
 
 ## Transaction Management
 
@@ -223,140 +189,63 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 ```java
 @Service
 @Transactional(readOnly = true)  // Default for all methods
+@RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
 
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
+    public List<ProductResponse> findAll() {
+        return repo.findAll().stream().map(ProductMapper::toResponse).toList();  // Read-only: skips dirty checking
     }
 
-    public List<Product> findAll() {
-        return repo.findAll();  // Read-only: skips dirty checking
-    }
-
-    @Transactional  // Override: read-write for mutations
-    public Product create(ProductRequest request) {
-        var product = new Product();
-        product.setName(request.name());
-        return repo.save(product);
-    }
+    // Writes override it with @Transactional, as create() in the spring-boot skill's ProductService
 }
 ```
 
-### Self-Invocation Pitfall
+### Self-Invocation
 
-```java
-// ❌ BAD: @Transactional ignored on self-invocation
-@Service
-public class OrderService {
-
-    public void processOrders(List<Long> ids) {
-        for (Long id : ids) {
-            processOrder(id);  // Calls via 'this', not proxy - no transaction!
-        }
-    }
-
-    @Transactional
-    public void processOrder(Long id) {
-        // This @Transactional is ignored when called from processOrders()
-    }
-}
-
-// ✅ GOOD: Extract to separate bean
-@Service
-public class OrderService {
-    private final OrderProcessor processor;
-
-    public OrderService(OrderProcessor processor) {
-        this.processor = processor;
-    }
-
-    public void processOrders(List<Long> ids) {
-        for (Long id : ids) {
-            processor.processOrder(id);  // Calls via proxy
-        }
-    }
-}
-
-@Service
-public class OrderProcessor {
-    @Transactional
-    public void processOrder(Long id) {
-        // Transaction works correctly
-    }
-}
-```
-
----
+`@Transactional` is ignored when the method is called through `this`, because the call bypasses the proxy. Move the method to another bean.
 
 ## Optimistic Locking
 
 ```java
-@Entity
-public class Product {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+// Add to the Product entity of the spring-boot skill; the @Builder constructor stays without it
+@Version
+@Setter(AccessLevel.NONE)
+private Long version;  // Hibernate checks this on update; never set it by hand
 
-    private String name;
-    private BigDecimal price;
-
-    @Version
-    private Long version;  // Hibernate checks this on update
-
-    // getters/setters
-}
-
-// Handling optimistic lock failure
+// A conflict surfaces at commit, after the method returns: the GlobalExceptionHandler in web.md of the spring-boot skill maps
+// OptimisticLockingFailureException to 409. To handle it here instead, call repo.saveAndFlush(product) in a try.
 @Service
+@RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
 
-    public ProductService(ProductRepository repo) {
-        this.repo = repo;
-    }
-
     @Transactional
-    public Product updatePrice(Long id, BigDecimal newPrice) {
+    public ProductResponse updatePrice(Long id, BigDecimal newPrice) {
         Product product = repo.findById(id)
-            .orElseThrow(() -> new EntityNotFoundException("Product not found"));
-        product.setPrice(newPrice);
-        try {
-            return repo.save(product);
-        } catch (OptimisticLockingFailureException e) {
-            throw new ConflictException("Product was modified by another user");
-        }
+            .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        product.setPrice(newPrice);   // managed entity: flushed and version-checked at commit
+        return ProductMapper.toResponse(product);
     }
 }
 ```
 
----
-
 ## Modern Hibernate Features
-
-### Jakarta Persistence
-
-```java
-// Always use jakarta.persistence.* (not javax.persistence.*)
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-```
 
 ### UUID Generation
 
 ```java
 @Entity
+@Getter
+@Setter
 public class Event {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)  // Native UUID generation
+    @Setter(AccessLevel.NONE)
     private UUID id;
 
     private String name;
-
-    // getters/setters
 }
 ```
 
@@ -366,23 +255,26 @@ public class Event {
 // Built-in soft delete support
 @Entity
 @SoftDelete  // Adds 'deleted' boolean column, filters automatically
+@Getter
+@Setter
 public class Customer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Setter(AccessLevel.NONE)
     private Long id;
 
     private String name;
-
-    // getters/setters
 }
 
-// Custom column name
+// Custom column: ACTIVE stores 1 for live rows (the default DELETED stores true for deleted ones)
 @Entity
-@SoftDelete(columnName = "is_active", converter = NumericBooleanConverter.class)
+@SoftDelete(columnName = "is_active", strategy = SoftDeleteType.ACTIVE, converter = NumericBooleanConverter.class)
 public class Product {
     // ...
 }
 ```
+
+Both columns come from a migration (`db-migrations`): `deleted BOOLEAN NOT NULL DEFAULT FALSE`, or `is_active INTEGER NOT NULL DEFAULT 1` for the converter.
 
 ### Record as DTO in Queries
 
@@ -392,58 +284,12 @@ public record ProductSummary(Long id, String name, BigDecimal price) {}
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-    @Query("SELECT new pl.piomin.services.dto.ProductSummary(p.id, p.name, p.price) " +
+    @Query("SELECT new com.example.dto.ProductSummary(p.id, p.name, p.price) " +
            "FROM Product p WHERE p.price > :minPrice")
     List<ProductSummary> findExpensiveProducts(@Param("minPrice") BigDecimal minPrice);
 }
 ```
 
----
+## Pagination and Projections
 
-## Query Best Practices
-
-### Pagination
-
-```java
-// ✅ Always paginate unbounded queries
-public interface UserRepository extends JpaRepository<User, Long> {
-
-    Page<User> findByActiveTrue(Pageable pageable);
-
-    Slice<User> findByRole(String role, Pageable pageable);  // No COUNT query
-}
-
-// Usage
-Page<User> page = userRepository.findByActiveTrue(
-    PageRequest.of(0, 20, Sort.by("createdAt").descending())
-);
-```
-
-### Spring Data Projections
-
-```java
-// Interface-based projection - fetches only declared fields
-public interface UserNameOnly {
-    String getFirstName();
-    String getLastName();
-}
-
-public interface UserRepository extends JpaRepository<User, Long> {
-    List<UserNameOnly> findAllByActiveTrue();
-}
-```
-
----
-
-## Quick Decision Guide
-
-| Situation | Solution |
-|-----------|----------|
-| N+1 in loop | JOIN FETCH or @EntityGraph |
-| LazyInitializationException | JOIN FETCH in query or @Transactional on service |
-| Read-only queries slow | `@Transactional(readOnly = true)` |
-| Concurrent updates | `@Version` + optimistic locking |
-| Unbounded result set | Pagination with `PageRequest` |
-| Need only few columns | DTO projection or interface projection |
-| Soft delete required | `@SoftDelete` |
-| UUID primary key | `@GeneratedValue(strategy = GenerationType.UUID)` |
+Every list query that can grow takes a `Pageable` (`Slice` skips the COUNT query). Interface and record projections are under "Projections" in `data.md` of the `spring-boot` skill.
