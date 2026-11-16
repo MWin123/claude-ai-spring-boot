@@ -53,7 +53,7 @@ Knowledge that Claude loads when the task needs it:
 | Skill | What it teaches |
 |-------|-----------------|
 | [`conventions`](skills/conventions/SKILL.md) | Mandatory project rules, loaded with `CLAUDE.md` (see [Conventions](#conventions)) |
-| [`spring-boot`](skills/spring-boot/SKILL.md) | Core development workflow with 7 reference guides (OpenAPI, web, Swagger UI, data, security, cloud, Boot 4 changes) |
+| [`spring-boot`](skills/spring-boot/SKILL.md) | Core development workflow with 8 reference guides (OpenAPI, web, Swagger UI, data, security, cloud, Spring AI, Boot 4 changes) |
 | [`code-quality`](skills/code-quality/SKILL.md) | Clean code principles and Java pitfalls |
 | [`design-patterns`](skills/design-patterns/SKILL.md) | Spring forms of the classic patterns; Outbox, Saga and CQRS |
 | [`testing-patterns`](skills/testing-patterns/SKILL.md) | JUnit 5, Mockito, MockMvc, RestTestClient, Testcontainers; 1 reference guide (integration tests) |
@@ -130,6 +130,7 @@ To change the API later, edit the spec and rebuild; never edit generated code.
 │   ├── spring-boot/
 │   │   ├── SKILL.md
 │   │   └── references/
+│   │       ├── ai.md
 │   │       ├── boot4.md
 │   │       ├── cloud.md
 │   │       ├── data.md

@@ -23,7 +23,7 @@ description: Coding rules for this Spring Boot 4.x project - records with target
 
 - `@Transactional(readOnly = true)` at service class level, `@Transactional` on mutating methods
 - Validation constraints in the spec (`required`, `minLength`, `maximum`, `pattern`, `format: email`); the generator puts `@Valid @RequestBody` and Bean Validation on the interfaces and models
-- `@RestControllerAdvice` extending `ResponseEntityExceptionHandler`, so every error is a Problem Detail (RFC 7807), including `ConstraintViolationException` → 400 (the generated interfaces are `@Validated`)
+- `@RestControllerAdvice` extending `ResponseEntityExceptionHandler`, so every error is a Problem Detail (RFC 9457), including `ConstraintViolationException` → 400 (the generated interfaces are `@Validated`)
 - Return `ResponseEntity` with proper status codes (201 Created, 204 No Content)
 - `@ConfigurationProperties` for type-safe config (no raw `@Value` for groups)
 - `@HttpExchange` interfaces for declarative HTTP clients

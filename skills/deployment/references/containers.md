@@ -4,6 +4,7 @@
 
 - Only when asked or when a pipeline exists (CI rule in the `conventions` skill); match the existing system's style
 - Build pipeline: checkout → restore cache → `./mvnw verify` (Gradle: `./gradlew build`) → save cache → build image → push to registry
+- The test job needs a Docker daemon for Testcontainers (e.g. GitHub-hosted `ubuntu-latest`)
 - Quality gates: test pass, code coverage threshold, vulnerability scan
 - Environment-specific deployment stages (dev → staging → prod)
 - Cache between builds: Maven `~/.m2/repository`, keyed on `pom.xml`; Gradle `~/.gradle/caches` and `~/.gradle/wrapper`, keyed on the `*.gradle*` files, `gradle.properties` and the files under `gradle/` (wrapper properties, version catalog) (on GitHub Actions use `gradle/actions/setup-gradle`)
@@ -91,7 +92,7 @@ RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar --no-daemon
 
 - Extend an existing compose file (`compose.yaml`, `docker-compose.yml`) instead of creating a new one; default name for new files: `compose.yaml`
 - Define all application dependencies (PostgreSQL, Redis, Kafka, etc.)
-- Health checks on all services (`pg_isready`, `mysqladmin ping`) with `depends_on.condition: service_healthy`
+- Health checks on all services (`pg_isready`, `mysqladmin ping`) with `depends_on.condition: service_healthy`; `docker compose up -d --wait` returns once every service is healthy
 - Named volumes for data persistence
 - Spring Boot configuration via environment variables (`SPRING_DATASOURCE_URL`, etc.)
 - Port 5005 for remote debugging

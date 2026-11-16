@@ -1,7 +1,7 @@
 ---
 name: spring-boot
 description: Building features in a Spring Boot 4.x app - contract-first REST endpoints (OpenAPI spec + openapi-generator), entities and repositories, transactional services, mappers, Problem Details, security, configuration and tests. Use when building or changing a feature.
-when_to_use: Adding or changing an endpoint, entity, repository, service, controller, exception handler or security rule; "build a REST API", "add a CRUD", "new feature"; questions about Spring Security, Spring Cloud or Boot 4 APIs (JPA pitfalls such as N+1 and lazy loading go to `jpa-patterns`).
+when_to_use: Adding or changing an endpoint, entity, repository, service, controller, exception handler or security rule; "build a REST API", "add a CRUD", "new feature"; calling an LLM with Spring AI (chat, tool calling, RAG, MCP server); questions about Spring Security, Spring Cloud, Spring AI or Boot 4 APIs (JPA pitfalls such as N+1 and lazy loading go to `jpa-patterns`).
 ---
 
 # Spring Boot Skill
@@ -147,11 +147,12 @@ Load detailed patterns based on context:
 | Topic | Reference | When to Load |
 |-------|-----------|-------------|
 | OpenAPI | `references/openapi.md` | Contract-first API: the spec, Spec Design Checklist, money fields, openapi-generator plugin (Maven, Gradle) |
-| Web/REST | `references/web.md` | Controllers (WebMVC, WebFlux), generated models and mapping, exception handling, custom validation, RestClient, CORS, Problem Details (RFC 7807) |
+| Web/REST | `references/web.md` | Controllers (WebMVC, WebFlux), generated models and mapping, exception handling, custom validation, RestClient, CORS, Problem Details (RFC 9457) |
 | Swagger UI | `references/swagger-ui.md` | springdoc starter, Kubernetes Ingress path prefixes, docs security matchers |
 | Data Access | `references/data.md` | Entities, repositories, auditing, projections |
 | Security | `references/security.md` | Spring Security 7, OAuth2 Resource Server, JWT, method security, SSL Bundles, hardening checklist |
 | Cloud/Config | `references/cloud.md` | Config server, discovery, resilience, HTTP interfaces, GraalVM native, OTLP tracing |
+| AI | `references/ai.md` | Only when the app calls an LLM: Spring AI 2.x `ChatClient`, structured output, tool calling, RAG, chat memory, MCP server, testing, 1.x to 2.0 renames |
 | Boot 4 | `references/boot4.md` | Modular starters, Jackson 3, @MockitoBean, @ImportHttpServices, API versioning, JSpecify |
 | Testing | `testing-patterns` skill | Unit, slice and integration tests, H2 and Testcontainers profiles |
 | JPA pitfalls | `jpa-patterns` skill | N+1, lazy loading, transactions, optimistic locking, Hibernate 7 |

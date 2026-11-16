@@ -106,11 +106,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation", ex);
+        // the constraint name only: the database message contains the rejected values
+        log.warn("Data integrity violation: {}", ex.getCause() instanceof org.hibernate.exception.ConstraintViolationException cause
+                ? cause.getConstraintName() : ex.getClass().getSimpleName());
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Resource may already exist");
     }
 
-    @ExceptionHandler(OptimisticLockingFailureException.class)   // @Version conflict, raised at commit (jpa-patterns)
+    @ExceptionHandler(OptimisticLockingFailureException.class)   // @Version conflict ("Optimistic Locking" in jpa-patterns)
     public ProblemDetail handleOptimisticLock(OptimisticLockingFailureException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Resource was modified concurrently; reload and retry");
     }
@@ -207,9 +209,9 @@ Use `RestClient` for blocking calls (default with virtual threads). Use `WebClie
 
 Configure CORS in one place. With Spring Security, that place is the `CorsConfigurationSource` bean in "Security Configuration" in `security.md`. `.cors(...)` applies it before authentication, so preflight requests need no token. Don't add a `WebMvcConfigurer` CORS mapping next to it. Without Spring Security, register the same origins, methods and headers in `WebMvcConfigurer.addCorsMappings`.
 
-## Problem Details (RFC 7807)
+## Problem Details (RFC 9457)
 
-With the handler above, every error response follows RFC 7807 (`spring.mvc.problemdetails.enabled` registers Boot's own `ResponseEntityExceptionHandler`, which backs off for this one):
+With the handler above, every error response follows RFC 9457, which replaced RFC 7807 (`spring.mvc.problemdetails.enabled` registers Boot's own `ResponseEntityExceptionHandler`, which backs off for this one):
 
 ```json
 {

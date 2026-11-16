@@ -10,13 +10,15 @@ This list says what to flag, not how to write code. The rules themselves are in 
 
 ## Correctness
 - Null safety: chained calls without null checks, `Optional.get()` (use `orElseThrow()` or `orElse()`), returning null instead of Optional or empty collection
-- Exception handling: empty catch blocks, catching `Exception`/`Throwable`, swallowed stack traces
+- Exception handling: empty catch blocks, catching `Exception`/`Throwable`, swallowed stack traces, log-and-rethrow
 - Resource leaks: manual `close()` instead of try-with-resources
 - Self-invocation: `@Transactional` or `@Async` called via `this` (bypasses the proxy)
 - Missing `@Transactional`/`readOnly = true` on an obvious multi-step write or read
+- Lost updates on a `@Version` entity: an update that ignores the `version` the client sent, or a `catch (OptimisticLockingFailureException)` around `save()` without a flush ("Optimistic Locking" in the `jpa-patterns` skill)
+- `LIKE` in a `Specification` or `@Query` built from unescaped user input ("Spring Data JPA Repository" in `data.md` of the `spring-boot` skill)
 
 ## Security
-- Request constraints missing from `openapi.yaml` (the generated `*Api` interface adds `@Valid`); a controller that redeclares mappings or `@Valid`; string-concatenated `@Query`/JDBC; JPA entities returned from controllers; hardcoded secrets
+- Request constraints missing from `openapi.yaml` (the generated `*Api` interface adds `@Valid`); a controller that redeclares mappings or `@Valid`; string-concatenated `@Query`/JDBC; JPA entities returned from controllers; hardcoded secrets; secrets, tokens or personal data in log statements
 - Every item of the "Hardening Checklist" in `security.md` of the `spring-boot` skill that the change touches; for a security audit, all of them across `SecurityConfig`, filters, controllers and `application.yml`
 - `grep -r` for common vulnerability patterns: hardcoded passwords or keys, string concatenation in queries, disabled CSRF or headers, `permitAll()` on non-public paths
 

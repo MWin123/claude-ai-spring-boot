@@ -92,7 +92,7 @@ public interface UserRepository extends JpaRepository<User, Long>,
     @Query("SELECT u FROM User u WHERE u.active = true AND u.createdAt >= :since")
     List<User> findActiveUsersSince(@Param("since") LocalDateTime since);
 
-    @Modifying   // runs in the caller's @Transactional service method
+    @Modifying(clearAutomatically = true, flushAutomatically = true)   // in the caller's @Transactional method; see jpa-patterns
     @Query("UPDATE User u SET u.active = false WHERE u.updatedAt < :threshold")
     int deactivateInactiveUsers(@Param("threshold") LocalDateTime threshold);
 
@@ -103,7 +103,7 @@ public interface UserRepository extends JpaRepository<User, Long>,
 }
 ```
 
-Dynamic filters: compose `Specification<User>` predicates and pass them to `findAll(spec, pageable)` (`JpaSpecificationExecutor`).
+Dynamic filters: compose `Specification<User>` predicates and pass them to `findAll(spec, pageable)` (`JpaSpecificationExecutor`). Escape `\`, `%` and `_` in user input passed to `LIKE` in a `Specification` or `@Query` and declare the escape character (`cb.like(path, pattern, '\\')`, JPQL `LIKE :q ESCAPE '\'`), otherwise `q=%` matches every row. Derived queries (`Containing`, `StartingWith`, `EndingWith`) escape on their own.
 
 ## Transactions and Fetching
 
