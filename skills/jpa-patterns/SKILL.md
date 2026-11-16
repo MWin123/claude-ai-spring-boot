@@ -17,6 +17,7 @@ Best practices and common pitfalls for JPA/Hibernate in Spring applications.
 | Slow queries | Performance issues | Pagination, projections, indexes |
 | Dirty checking overhead | Slow updates | Read-only transactions, DTOs |
 | Lost updates | Concurrent modifications | Optimistic locking (@Version) |
+| Stale entities after a bulk `@Query` update | Old values read later in the same transaction; `@Version` not incremented | `@Modifying(clearAutomatically = true, flushAutomatically = true)`; add `version = version + 1` to the `SET` if concurrent writers rely on it |
 | Deleted rows must stay | Hard deletes lose history | `@SoftDelete` |
 | UUID primary key | Sequential IDs leak or collide across services | `@GeneratedValue(strategy = GenerationType.UUID)` |
 
@@ -213,22 +214,29 @@ public class ProductService {
 @Setter(AccessLevel.NONE)
 private Long version;  // Hibernate checks this on update; never set it by hand
 
-// A conflict surfaces at commit, after the method returns: the GlobalExceptionHandler in web.md of the spring-boot skill maps
-// OptimisticLockingFailureException to 409. To handle it here instead, call repo.saveAndFlush(product) in a try.
+// A conflict surfaces at the flush: the GlobalExceptionHandler in web.md of the spring-boot skill maps
+// OptimisticLockingFailureException to 409. To handle it here instead, put the flush in a try.
 @Service
 @RequiredArgsConstructor
 public class ProductService {
     private final ProductRepository repo;
 
     @Transactional
-    public ProductResponse updatePrice(Long id, BigDecimal newPrice) {
+    public ProductResponse updatePrice(Long id, BigDecimal newPrice, Long expectedVersion) {
         Product product = repo.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-        product.setPrice(newPrice);   // managed entity: flushed and version-checked at commit
-        return ProductMapper.toResponse(product);
+        if (!Objects.equals(product.getVersion(), expectedVersion)) {   // the client edited an older state
+            throw new ObjectOptimisticLockingFailureException(Product.class, id);
+        }
+        product.setPrice(newPrice);
+        repo.flush();                 // version-checked and incremented now; without it the response carries the old version
+        return ProductMapper.toResponse(product);   // add version to the ProductResponse schema and the mapper
     }
 }
 ```
+
+- `@Version` alone guards only the window between this transaction's read and its commit. Across HTTP requests the client sends back the `version` it read (in the spec: `version` in the response and required in the update request), and the service compares it as above. The table gets the column in a migration (`version BIGINT NOT NULL DEFAULT 0`). Hibernate ignores a version set on a managed entity, so `setVersion(...)` detects nothing.
+- Test it: two updates with the same `version`; the second returns 409.
 
 ## Modern Hibernate Features
 

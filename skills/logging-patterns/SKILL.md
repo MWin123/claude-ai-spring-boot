@@ -131,6 +131,12 @@ Fields for every line (e.g. the environment) go in `logging.structured.json.add.
 
 Declare the logger with `@Slf4j` (`LoggerFactory.getLogger(MyClass.class)` where the class can't use Lombok). Use `{}` placeholders instead of string concatenation, and pass the exception as the last argument, without a placeholder, so the stack trace is logged.
 
+Log an exception once, where the flow ends (a message listener, a scheduled job; Spring Boot logs an unhandled exception of a web request itself). Lower layers wrap it with context and rethrow (`throw new OrderProcessingException("Payment failed for order " + id, e)`) instead of logging and rethrowing, which prints the same stack trace once per layer. Expected errors (404, validation) are `WARN` or `DEBUG` without a stack trace; only unexpected failures are `ERROR` with the exception.
+
+## What Not to Log
+
+Never log passwords, secrets, tokens, session IDs, `Authorization` or `Cookie` headers, card data, national IDs, health data or other personal data (email, phone, address, birth date), and no full request or response bodies in production. Log the ID instead (`customerId={}`, `cardLast4={}`). A record prints every component in `toString()`: log its ID, or override `toString()` on a record that carries personal data.
+
 ## MDC (Mapped Diagnostic Context)
 
 MDC attaches context (request ID, user ID) to every log line in the current thread automatically.
@@ -152,7 +158,6 @@ public class MdcFilter implements Filter {
                 requestId = UUID.randomUUID().toString().substring(0, 8);
             }
             MDC.put("requestId", requestId);
-            MDC.put("clientIp", httpRequest.getRemoteAddr());
 
             chain.doFilter(request, response);
         } finally {
@@ -188,3 +193,5 @@ public class AsyncConfig {
     }
 }
 ```
+
+The decorator applies only to Spring's executors (`@Async`, the auto-configured `applicationTaskExecutor`). `CompletableFuture.supplyAsync(...)` without an executor runs on the common pool and loses the MDC: inject `applicationTaskExecutor` and pass it.
