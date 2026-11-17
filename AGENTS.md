@@ -1,8 +1,8 @@
 # claude-ai-spring-boot
 
 ## Repository
-- This is a template, not an application: agents, skills and config that `setup.sh` copies into Spring Boot projects. There is no Spring Boot build here.
-- No project uses the template yet: `setup.sh` installs from scratch, so add no upgrade path, migration steps or backward compatibility.
+- This is a template, not an application: agents, skills and config that `install.py` copies into Spring Boot projects. There is no Spring Boot build here.
+- No project uses the template yet: `install.py` installs from scratch, so add no upgrade path, migration steps or backward compatibility.
 - Copied into projects: `agents/` and `skills/` (to `.claude/`), `config/.claude/settings.json` and `config/.claude/hooks/` (to `.claude/`), `config/AGENTS.md` and `config/CLAUDE.md` (to the project root), and `config/.claude/settings.user.json` (to `~/.claude/settings.json`). Everything else (`tests/`, `.github/`, `.claude/settings.json`, README, `CLAUDE.md`, this file) stays here.
 - `config/AGENTS.md` holds the rules for generated projects; don't apply them to this repository.
 - Rules go into `AGENTS.md`; each `CLAUDE.md` holds only `@AGENTS.md`, which imports the file next to it.
@@ -10,7 +10,7 @@
 ## Workflow
 - Use plan mode for changes across several files or with design choices; write the plan upfront.
 - Python code (hooks, tests) targets `python3` 3.13 or later and has type hints.
-- Before committing, run `shellcheck setup.sh` and `pytest tests` (`pip install -r tests/requirements.txt`). Never mark a task done with a failing or skipped check.
+- Before committing, run `mypy --strict install.py config/.claude/hooks tests` and `pytest tests` (`pip install -r tests/requirements.txt`). Never mark a task done with a failing or skipped check.
 - Prove changed Java, Maven, Gradle or YAML examples by building them in a throwaway Spring Boot project in a scratch directory (latest Boot 4.x, the documented plugin and library versions), with positive and negative tests. Start Docker when a check needs it. Never add that project to this repository.
 - Keep files short: say each rule once and refer to it from other files instead of repeating it. Simplify where possible without dropping features.
 
