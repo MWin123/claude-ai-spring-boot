@@ -93,10 +93,10 @@ def test_docs_researcher_tool_order_matches_its_tools():
     tools = [t.strip() for t in frontmatter(path)["tools"].split(",")]
     web = {t.rsplit("__", 1)[-1] for t in tools if t.startswith("mcp__") or t.startswith("Web")}
     assert named == web, f"only in Tool Order: {sorted(named - web)}; only in tools: {sorted(web - named)}"
-    assert "`firecrawl_developer_search`" in steps[0], "developer search comes first (Tools in CLAUDE.md)"
+    assert "`firecrawl_developer_search`" in steps[0], "developer search comes first (Tools in AGENTS.md)"
 
 
-@pytest.mark.parametrize("path", [ROOT / "CLAUDE.md", ROOT / "config/CLAUDE.md"], ids=rel)
+@pytest.mark.parametrize("path", [ROOT / "AGENTS.md", ROOT / "config/AGENTS.md"], ids=rel)
 def test_tools_section_routes_image_downloads_to_image_fetcher(path):
     """Only the image-fetcher skill downloads images; the WebSearch/WebFetch fallback stays the last Tools line."""
     tools = path.read_text().split("## Tools", 1)[1].split("\n## ", 1)[0]
@@ -105,3 +105,10 @@ def test_tools_section_routes_image_downloads_to_image_fetcher(path):
     assert len(images) == 1, f"{rel(path)}: Tools needs exactly one `image-fetcher` line"
     assert "only" in images[0], f"{rel(path)}: say the skill is used only for downloading images"
     assert "`WebFetch`" in lines[-1], f"{rel(path)}: the WebSearch/WebFetch fallback must stay last"
+
+
+@pytest.mark.parametrize("path", [ROOT / "CLAUDE.md", ROOT / "config/CLAUDE.md"], ids=rel)
+def test_claude_md_only_imports_agents_md(path):
+    """The rules live in AGENTS.md; CLAUDE.md only imports the one next to it (works without symlinks)."""
+    assert path.read_text() == "@AGENTS.md\n"
+    assert (path.parent / "AGENTS.md").is_file()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copies agents, skills, config/settings.json and config/CLAUDE.md into a Spring Boot project.
+# Copies agents, skills, config/.claude/settings.json, config/AGENTS.md and config/CLAUDE.md into a Spring Boot project.
 # Usage: ./setup.sh [project-dir]   (defaults to the current directory)
 set -euo pipefail
 
@@ -26,7 +26,7 @@ if [[ -z "$BUILD_FILE" ]]; then
   exit 1
 fi
 
-# Project name for the CLAUDE.md heading: Maven artifactId (not the parent's), else Gradle rootProject.name, else the directory name (Gradle's default)
+# Project name for the AGENTS.md heading: Maven artifactId (not the parent's), else Gradle rootProject.name, else the directory name (Gradle's default)
 if [[ "$BUILD_FILE" == pom.xml ]]; then
   NAME="$(sed -e 's:<parent>.*</parent>::' -e '/<parent>/,/<\/parent>/d' "$TARGET_DIR/pom.xml" | sed -n 's:.*<artifactId>\([^<]*\)</artifactId>.*:\1:p' | head -n 1)"
   if [[ -z "$NAME" ]]; then
@@ -39,13 +39,26 @@ else
   NAME="${NAME:-$(basename "$TARGET_DIR")}"
 fi
 PLACEHOLDER="# <project-name>"
-if [[ "$(head -n 1 "$SOURCE_DIR/config/CLAUDE.md")" != "$PLACEHOLDER" ]]; then
-  echo "config/CLAUDE.md must start with '$PLACEHOLDER'" >&2
+if [[ "$(head -n 1 "$SOURCE_DIR/config/AGENTS.md")" != "$PLACEHOLDER" ]]; then
+  echo "config/AGENTS.md must start with '$PLACEHOLDER'" >&2
   exit 1
 fi
-CLAUDE_MD="$(mktemp)"
-trap 'rm -f "$CLAUDE_MD"' EXIT
-{ printf '# %s\n' "$NAME"; tail -n +2 "$SOURCE_DIR/config/CLAUDE.md"; } > "$CLAUDE_MD"
+AGENTS_MD="$(mktemp)"
+trap 'rm -f "$AGENTS_MD"' EXIT
+{ printf '# %s\n' "$NAME"; tail -n +2 "$SOURCE_DIR/config/AGENTS.md"; } > "$AGENTS_MD"
+
+# Copies $1 to the project root as $2; a different existing file is backed up first
+install_root_file() {
+  local source="$1" target="$TARGET_DIR/$2"
+  if [[ -f "$target" ]] && ! cmp -s "$source" "$target"; then
+    local backup="$target.bak"
+    # Never overwrite an earlier backup: it may hold the project's original rules
+    [[ -e "$backup" ]] && backup="$target.$(date +%Y%m%d%H%M%S).bak"
+    cp "$target" "$backup"
+    echo "Existing $2 saved as $(basename "$backup")"
+  fi
+  cp "$source" "$target"
+}
 
 mkdir -p "$TARGET_DIR/.claude/agents" "$TARGET_DIR/.claude/skills"
 cp -r "$SOURCE_DIR/agents/." "$TARGET_DIR/.claude/agents/"
@@ -54,15 +67,9 @@ cp -r "$SOURCE_DIR/skills/." "$TARGET_DIR/.claude/skills/"
 if [[ -e "$TARGET_DIR/.claude/settings.json" ]]; then
   echo "Existing .claude/settings.json kept"
 else
-  cp "$SOURCE_DIR/config/settings.json" "$TARGET_DIR/.claude/settings.json"
+  cp "$SOURCE_DIR/config/.claude/settings.json" "$TARGET_DIR/.claude/settings.json"
 fi
-if [[ -f "$TARGET_DIR/CLAUDE.md" ]] && ! cmp -s "$CLAUDE_MD" "$TARGET_DIR/CLAUDE.md"; then
-  BACKUP="$TARGET_DIR/CLAUDE.md.bak"
-  # Never overwrite an earlier backup: it may hold the project's original rules
-  [[ -e "$BACKUP" ]] && BACKUP="$TARGET_DIR/CLAUDE.md.$(date +%Y%m%d%H%M%S).bak"
-  cp "$TARGET_DIR/CLAUDE.md" "$BACKUP"
-  echo "Existing CLAUDE.md saved as $(basename "$BACKUP")"
-fi
-cp "$CLAUDE_MD" "$TARGET_DIR/CLAUDE.md"
+install_root_file "$AGENTS_MD" AGENTS.md
+install_root_file "$SOURCE_DIR/config/CLAUDE.md" CLAUDE.md
 
-echo "Copied agents, skills, settings.json and CLAUDE.md to $TARGET_DIR (project: $NAME)"
+echo "Copied agents, skills, settings.json, AGENTS.md and CLAUDE.md to $TARGET_DIR (project: $NAME)"

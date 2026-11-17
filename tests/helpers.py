@@ -8,9 +8,9 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS = sorted((ROOT / "agents").glob("*.md"))
 SKILLS = sorted(p.parent for p in (ROOT / "skills").glob("*/SKILL.md"))
-CONFIG = ROOT / "config"  # CLAUDE.md and settings.json for Spring Boot projects
-CLAUDE_FILES = AGENTS + sorted((ROOT / "skills").rglob("*.md")) + [CONFIG / "CLAUDE.md"]
-DOCS = CLAUDE_FILES + [ROOT / "README.md", ROOT / "CLAUDE.md"]
+CONFIG = ROOT / "config"  # AGENTS.md, CLAUDE.md and .claude/settings.json for Spring Boot projects
+CLAUDE_FILES = AGENTS + sorted((ROOT / "skills").rglob("*.md")) + [CONFIG / "AGENTS.md"]
+DOCS = CLAUDE_FILES + [ROOT / "README.md", ROOT / "AGENTS.md"]
 
 
 def rel(path: Path) -> str:

@@ -1,4 +1,4 @@
-"""setup.sh copies agents, skills and config/ (settings.json, CLAUDE.md) into a project, and nothing else."""
+"""setup.sh copies agents, skills and config/ (.claude/settings.json, AGENTS.md, CLAUDE.md) into a project, and nothing else."""
 import filecmp
 import os
 import re
@@ -25,9 +25,17 @@ def project(tmp_path):
     return tmp_path
 
 
-def expected_claude_md(name):
-    """config/CLAUDE.md with its placeholder heading replaced by the project name."""
-    return f"# {name}\n" + (CONFIG / "CLAUDE.md").read_text().split("\n", 1)[1]
+def expected_agents_md(name):
+    """config/AGENTS.md with its placeholder heading replaced by the project name."""
+    return f"# {name}\n" + (CONFIG / "AGENTS.md").read_text().split("\n", 1)[1]
+
+
+def expected(file):
+    """The installed content of a root file for the project `demo`."""
+    return expected_agents_md("demo") if file == "AGENTS.md" else (CONFIG / file).read_text()
+
+
+ROOT_FILES = pytest.mark.parametrize("file", ["AGENTS.md", "CLAUDE.md"])
 
 
 def assert_same_tree(source, target):
@@ -46,12 +54,13 @@ def test_copies_only_the_claude_files(tmp_path, build_file):
     result = run_setup(tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([".claude", "CLAUDE.md", build_file])
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([".claude", "AGENTS.md", "CLAUDE.md", build_file])
     assert sorted(p.name for p in (tmp_path / ".claude").iterdir()) == ["agents", "settings.json", "skills"]
     assert_same_tree(ROOT / "agents", tmp_path / ".claude" / "agents")
     assert_same_tree(ROOT / "skills", tmp_path / ".claude" / "skills")
-    assert filecmp.cmp(CONFIG / "settings.json", tmp_path / ".claude" / "settings.json", shallow=False)
-    assert (tmp_path / "CLAUDE.md").read_text() == expected_claude_md("demo" if build_file == "pom.xml" else tmp_path.name)
+    assert filecmp.cmp(CONFIG / ".claude" / "settings.json", tmp_path / ".claude" / "settings.json", shallow=False)
+    assert (tmp_path / "AGENTS.md").read_text() == expected_agents_md("demo" if build_file == "pom.xml" else tmp_path.name)
+    assert filecmp.cmp(CONFIG / "CLAUDE.md", tmp_path / "CLAUDE.md", shallow=False)
 
 
 def test_leaves_an_existing_gitignore_alone(project):
@@ -111,42 +120,45 @@ def test_keeps_existing_settings(project):
     assert "Existing .claude/settings.json kept" in result.stdout
 
 
-def test_backs_up_a_different_claude_md(project):
-    (project / "CLAUDE.md").write_text("project rules")
+@ROOT_FILES
+def test_backs_up_a_different_root_file(project, file):
+    (project / file).write_text("project rules")
 
     result = run_setup(project)
 
     assert result.returncode == 0, result.stderr
-    assert (project / "CLAUDE.md.bak").read_text() == "project rules"
-    assert "saved as CLAUDE.md.bak" in result.stdout
-    assert (project / "CLAUDE.md").read_text() == expected_claude_md("demo")
+    assert (project / f"{file}.bak").read_text() == "project rules"
+    assert f"Existing {file} saved as {file}.bak" in result.stdout
+    assert (project / file).read_text() == expected(file)
+    assert len(list(project.glob("*.bak"))) == 1, "only the different file is backed up"
 
 
-def test_never_overwrites_an_earlier_backup(project):
-    (project / "CLAUDE.md").write_text("original rules")
+@ROOT_FILES
+def test_never_overwrites_an_earlier_backup(project, file):
+    (project / file).write_text("original rules")
     run_setup(project)
-    (project / "CLAUDE.md").write_text("edited rules")
+    (project / file).write_text("edited rules")
 
     result = run_setup(project)
 
     assert result.returncode == 0, result.stderr
-    assert (project / "CLAUDE.md.bak").read_text() == "original rules"
-    timestamped = list(project.glob("CLAUDE.md.*.bak"))
+    assert (project / f"{file}.bak").read_text() == "original rules"
+    timestamped = list(project.glob(f"{file}.*.bak"))
     assert len(timestamped) == 1 and timestamped[0].read_text() == "edited rules"
 
 
-def test_no_backup_for_an_identical_claude_md(project):
+def test_no_backup_for_identical_root_files(project):
     assert run_setup(project).returncode == 0
 
     result = run_setup(project)
 
     assert result.returncode == 0, result.stderr
-    assert not list(project.glob("CLAUDE.md*.bak"))
+    assert not list(project.glob("*.bak"))
 
 
-def test_config_claude_md_starts_with_the_placeholder():
+def test_config_agents_md_starts_with_the_placeholder():
     """setup.sh replaces this first line with the project name."""
-    assert (CONFIG / "CLAUDE.md").read_text().startswith("# <project-name>\n")
+    assert (CONFIG / "AGENTS.md").read_text().startswith("# <project-name>\n")
 
 
 @pytest.mark.parametrize(
@@ -171,7 +183,7 @@ def test_heading_is_the_project_name(tmp_path, build_file, content):
     result = run_setup(tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert (tmp_path / "CLAUDE.md").read_text() == expected_claude_md("order-service")
+    assert (tmp_path / "AGENTS.md").read_text() == expected_agents_md("order-service")
     assert "(project: order-service)" in result.stdout
 
 
@@ -185,7 +197,7 @@ def test_gradle_name_defaults_to_the_directory(tmp_path, files):
     result = run_setup(project)
 
     assert result.returncode == 0, result.stderr
-    assert (project / "CLAUDE.md").read_text().startswith("# my-app\n")
+    assert (project / "AGENTS.md").read_text().startswith("# my-app\n")
 
 
 def test_rejects_a_pom_without_artifact_id(tmp_path):
@@ -221,4 +233,5 @@ def test_claude_md_imports_resolve(project):
                 loaded.add(target)
                 todo.append((target, hops + 1))
     assert not missing, "\n".join(missing)
-    assert project / ".claude" / "skills" / "conventions" / "SKILL.md" in loaded, "CLAUDE.md must import conventions"
+    assert project / "AGENTS.md" in loaded, "CLAUDE.md must import AGENTS.md"
+    assert project / ".claude" / "skills" / "conventions" / "SKILL.md" in loaded, "AGENTS.md must import conventions"

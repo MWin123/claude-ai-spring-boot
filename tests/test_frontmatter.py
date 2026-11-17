@@ -87,5 +87,5 @@ def test_trigger_phrases_live_in_when_to_use(path):
 
 
 def test_settings_json_is_valid():
-    settings = json.loads((CONFIG / "settings.json").read_text())
+    settings = json.loads((CONFIG / ".claude" / "settings.json").read_text())
     assert isinstance(settings, dict)
