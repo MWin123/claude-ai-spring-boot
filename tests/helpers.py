@@ -2,13 +2,14 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS = sorted((ROOT / "agents").glob("*.md"))
 SKILLS = sorted(p.parent for p in (ROOT / "skills").glob("*/SKILL.md"))
-CONFIG = ROOT / "config"  # AGENTS.md, CLAUDE.md and .claude/settings.json for Spring Boot projects
+CONFIG = ROOT / "config"  # AGENTS.md, CLAUDE.md, .claude/settings.json and .claude/settings.user.json for Spring Boot projects
 CLAUDE_FILES = AGENTS + sorted((ROOT / "skills").rglob("*.md")) + [CONFIG / "AGENTS.md"]
 DOCS = CLAUDE_FILES + [ROOT / "README.md", ROOT / "AGENTS.md"]
 
@@ -17,10 +18,11 @@ def rel(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
 
-def frontmatter(path: Path) -> dict:
+def frontmatter(path: Path) -> dict[str, Any]:
     match = re.match(r"---\n(.*?)\n---\n", path.read_text(), re.S)
     assert match, f"{rel(path)}: no YAML frontmatter"
-    return yaml.safe_load(match.group(1))
+    meta: dict[str, Any] = yaml.safe_load(match.group(1))
+    return meta
 
 
 def headings(text: str) -> list[tuple[int, str]]:

@@ -1,11 +1,14 @@
 """Code examples parse and don't bring back patterns the skills tell Claude to avoid."""
 import json
 import re
+from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 import yaml
+from _pytest.mark import ParameterSet
 
-from helpers import CLAUDE_FILES, ROOT, code_blocks, code_blocks_blanked, rel
+from helpers import CLAUDE_FILES, ROOT, CodeBlock, code_blocks, code_blocks_blanked, rel
 
 # Recommended code must not contain these.
 BANNED = {
@@ -35,32 +38,32 @@ CONTRACT_FIRST_EXEMPT = {"skills/spring-boot/references/boot4.md"}
 MAPPING = next(p for p in BANNED if "Mapping" in p)
 
 
-def without_comments(line):
+def without_comments(line: str) -> str:
     """Drop // and # comments (they often say "not X"), keeping URLs like https://."""
     return re.split(r"(?:^|\s)(?://|#|<!--)", line, maxsplit=1)[0]
 
 
-def blocks(langs):
+def blocks(langs: set[str], keep: Callable[[CodeBlock], bool] = lambda block: True) -> list[ParameterSet]:
     return [
         pytest.param(path, block, id=f"{rel(path)}:{block.line}")
         for path in CLAUDE_FILES
         for block in code_blocks(path.read_text())
-        if block.lang in langs
+        if block.lang in langs and keep(block)
     ]
 
 
-@pytest.mark.parametrize("path,block", [p for p in blocks({"yaml", "yml"}) if "{{" not in p.values[1].body])
-def test_yaml_blocks_parse(path, block):  # Helm templates ({{ }}) are not YAML until rendered
+@pytest.mark.parametrize("path,block", blocks({"yaml", "yml"}, lambda block: "{{" not in block.body))
+def test_yaml_blocks_parse(path: Path, block: CodeBlock) -> None:  # Helm templates ({{ }}) are not YAML until rendered
     list(yaml.safe_load_all(block.body))
 
 
-def config_keys(block):
+def config_keys(block: CodeBlock) -> list[str]:
     """Every dotted key of a YAML or properties block, parents included."""
     if block.lang == "properties":
         return [l.split("=", 1)[0].strip() for l in block.body.splitlines() if "=" in l and not l.lstrip().startswith("#")]
-    keys = []
+    keys: list[str] = []
 
-    def walk(node, prefix):
+    def walk(node: object, prefix: str) -> None:
         for key, value in node.items() if isinstance(node, dict) else ():
             keys.append(f"{prefix}{key}")
             walk(value, f"{prefix}{key}.")
@@ -70,14 +73,14 @@ def config_keys(block):
     return keys
 
 
-@pytest.mark.parametrize("path,block", [p for p in blocks({"yaml", "yml", "properties"}) if "{{" not in p.values[1].body])
-def test_no_banned_config_keys(path, block):
+@pytest.mark.parametrize("path,block", blocks({"yaml", "yml", "properties"}, lambda block: "{{" not in block.body))
+def test_no_banned_config_keys(path: Path, block: CodeBlock) -> None:
     found = [f"{key} ({reason})" for key in config_keys(block) for pattern, reason in BANNED_KEYS.items() if re.match(pattern, key)]
     assert not found, "\n".join(found)
 
 
 @pytest.mark.parametrize("path", CLAUDE_FILES, ids=rel)
-def test_java_blocks_hold_no_config(path):
+def test_java_blocks_hold_no_config(path: Path) -> None:
     """YAML or properties inside a java block escape the YAML parse and key checks."""
     found = []
     for block in code_blocks(path.read_text()):
@@ -89,12 +92,12 @@ def test_java_blocks_hold_no_config(path):
 
 
 @pytest.mark.parametrize("path,block", blocks({"json"}))
-def test_json_blocks_parse(path, block):
+def test_json_blocks_parse(path: Path, block: CodeBlock) -> None:
     json.loads(block.body)
 
 
-@pytest.mark.parametrize("path,block", [p for p in blocks({"yaml"}) if "\nopenapi: " in "\n" + p.values[1].body])
-def test_openapi_local_refs_resolve(path, block):
+@pytest.mark.parametrize("path,block", blocks({"yaml"}, lambda block: "\nopenapi: " in "\n" + block.body))
+def test_openapi_local_refs_resolve(path: Path, block: CodeBlock) -> None:
     spec = yaml.safe_load(block.body)
     missing = []
     for ref in re.findall(r"\$ref: '#/([^']+)'", block.body):
@@ -107,7 +110,7 @@ def test_openapi_local_refs_resolve(path, block):
 
 
 @pytest.mark.parametrize("path", CLAUDE_FILES, ids=rel)
-def test_no_banned_patterns_in_code(path):
+def test_no_banned_patterns_in_code(path: Path) -> None:
     found = []
     for block in code_blocks(path.read_text()):
         for offset, line in enumerate(block.body.splitlines()):
@@ -121,7 +124,7 @@ def test_no_banned_patterns_in_code(path):
 
 
 @pytest.mark.parametrize("path", [p for p in CLAUDE_FILES if rel(p) not in CONTRACT_FIRST_EXEMPT], ids=rel)
-def test_controllers_implement_generated_interfaces(path):
+def test_controllers_implement_generated_interfaces(path: Path) -> None:
     """Contract-first: every @RestController example implements a generated *Api interface."""
     handwritten = []
     for block in code_blocks(path.read_text()):
@@ -135,7 +138,7 @@ def test_controllers_implement_generated_interfaces(path):
 
 
 @pytest.mark.parametrize("path", CLAUDE_FILES, ids=rel)
-def test_exception_handlers_return_problem_details(path):
+def test_exception_handlers_return_problem_details(path: Path) -> None:
     """Errors are Problem Details: every @ExceptionHandler method returns ProblemDetail."""
     wrong = []
     for block in code_blocks(path.read_text()):
@@ -158,7 +161,7 @@ TESTS_AGENT_BANNED = {
 }
 
 
-def test_tests_agent_commands_need_no_permission_rules():
+def test_tests_agent_commands_need_no_permission_rules() -> None:
     text = code_blocks_blanked((ROOT / "agents" / "tests.md").read_text())
     found = [
         f"`{span}`: {reason}"

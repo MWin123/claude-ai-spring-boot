@@ -1,6 +1,7 @@
 """Agent and skill frontmatter is complete and valid for Claude Code."""
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -30,7 +31,7 @@ SKILL_MAX_LINES = 500  # longer content belongs in references/
 
 
 @pytest.mark.parametrize("path", AGENTS, ids=rel)
-def test_agent_frontmatter(path):
+def test_agent_frontmatter(path: Path) -> None:
     meta = frontmatter(path)
 
     unknown = sorted(set(meta) - AGENT_FIELDS)
@@ -59,7 +60,7 @@ def test_agent_frontmatter(path):
 
 
 @pytest.mark.parametrize("path", SKILLS, ids=rel)
-def test_skill_frontmatter(path):
+def test_skill_frontmatter(path: Path) -> None:
     meta = frontmatter(path / "SKILL.md")
 
     unknown = sorted(set(meta) - SKILL_FIELDS)
@@ -75,17 +76,42 @@ def test_skill_frontmatter(path):
 
 
 @pytest.mark.parametrize("path", SKILLS, ids=rel)
-def test_skill_stays_short(path):
+def test_skill_stays_short(path: Path) -> None:
     lines = len((path / "SKILL.md").read_text().splitlines())
     assert lines <= SKILL_MAX_LINES, f"{lines} lines; move details to references/"
 
 
 @pytest.mark.parametrize("path", SKILLS, ids=rel)
-def test_trigger_phrases_live_in_when_to_use(path):
+def test_trigger_phrases_live_in_when_to_use(path: Path) -> None:
     """A "When to Use" body section is read only after the skill loaded, so it can't trigger it."""
     assert "\n## When to Use\n" not in (path / "SKILL.md").read_text(), "move the list into when_to_use"
 
 
-def test_settings_json_is_valid():
-    settings = json.loads((CONFIG / ".claude" / "settings.json").read_text())
+PROJECT_SETTINGS = [CONFIG / ".claude" / "settings.json", ROOT / ".claude" / "settings.json"]
+USER_SETTINGS = CONFIG / ".claude" / "settings.user.json"
+
+
+@pytest.mark.parametrize("path", [*PROJECT_SETTINGS, USER_SETTINGS], ids=rel)
+def test_settings_json_is_valid(path: Path) -> None:
+    settings = json.loads(path.read_text())
     assert isinstance(settings, dict)
+
+
+@pytest.mark.parametrize("path", PROJECT_SETTINGS, ids=rel)
+def test_auto_mode_stays_out_of_project_settings(path: Path) -> None:
+    """Claude Code ignores defaultMode "auto" and autoMode in project settings; they live in the user settings."""
+    settings = json.loads(path.read_text())
+    assert "autoMode" not in settings
+    assert settings["permissions"].get("defaultMode") != "auto"
+    assert json.loads(USER_SETTINGS.read_text())["permissions"]["defaultMode"] == "auto"
+
+
+@pytest.mark.parametrize(("path", "project"), [(PROJECT_SETTINGS[0], CONFIG), (PROJECT_SETTINGS[1], ROOT)], ids=rel)
+def test_bash_guard_hook_is_wired(path: Path, project: Path) -> None:
+    """A hook command with a wrong path fails on every Bash call, and only as a warning."""
+    (entry,) = json.loads(path.read_text())["hooks"]["PreToolUse"]
+    (hook,) = entry["hooks"]
+    assert entry["matcher"] == "Bash" and hook["type"] == "command"
+    script = re.fullmatch(r'python3 "\$\{CLAUDE_PROJECT_DIR\}/(.+)"', hook["command"])
+    assert script, hook["command"]
+    assert (project / script.group(1)).samefile(CONFIG / ".claude" / "hooks" / "guard-bash.py")

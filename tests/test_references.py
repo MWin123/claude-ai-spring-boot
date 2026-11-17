@@ -1,5 +1,6 @@
 """References between the Claude files point at sections, files, steps, skills and agents that exist."""
 import re
+from pathlib import Path
 
 import pytest
 
@@ -10,17 +11,17 @@ from helpers import (
 AGENT_NAMES = {p.stem for p in AGENTS}
 SKILL_NAMES = {p.name for p in SKILLS}
 EXTERNAL_SKILLS = {"image-fetcher"}  # installed in the user's Claude environment, not shipped by this template
-DOCS_BY_NAME = {}
+DOCS_BY_NAME: dict[str, list[Path]] = {}
 for doc in DOCS:
     DOCS_BY_NAME.setdefault(doc.name, []).append(doc)
 
 
-def prose(path):
+def prose(path: Path) -> str:
     """File text with code blocks blanked, so examples and templates are not checked as references."""
     return code_blocks_blanked(path.read_text())
 
 
-def resolve(name, path):
+def resolve(name: str, path: Path) -> Path | None:
     """A referenced Markdown file: a path relative to the repo, the citing skill, or a unique file name."""
     if name in ("AGENTS.md", "CLAUDE.md") and path in CLAUDE_FILES:
         return CONFIG / name  # the project's file, not this repository's
@@ -35,7 +36,7 @@ def resolve(name, path):
 
 
 @pytest.mark.parametrize("path", DOCS, ids=rel)
-def test_section_references_exist(path):
+def test_section_references_exist(path: Path) -> None:
     """`"Section" in `file.md``, `"Section" below` and `"Section" above` name a heading (prefix match)."""
     text = prose(path)
     problems = []
@@ -57,7 +58,7 @@ def test_section_references_exist(path):
 
 
 @pytest.mark.parametrize("path", DOCS, ids=rel)
-def test_file_references_exist(path):
+def test_file_references_exist(path: Path) -> None:
     text = prose(path)
     missing = [
         f"line {line_of(text, m.start())}: `{m.group(1)}`"
@@ -71,16 +72,19 @@ def test_file_references_exist(path):
         if not (ROOT / m.group(1)).is_file()
     ]
     # A file of another skill is cited with that skill: "`web.md` in the `spring-boot` skill"
-    skill_of = lambda p: next((s for s in SKILLS if s in p.parents), None)
+    def skill_of(p: Path) -> Path | None:
+        return next((s for s in SKILLS if s in p.parents), None)
+
     for m in re.finditer(r"(?<!` )`((?:references/)?[\w-]+\.md)`(?! (?:in|of) the `)", text):
         target = resolve(m.group(1), path)
-        if target and target.name != "SKILL.md" and skill_of(target) not in (None, skill_of(path)):
-            missing.append(f"line {line_of(text, m.start())}: `{m.group(1)}` is in the `{skill_of(target).name}` skill; name it")
+        skill = skill_of(target) if target and target.name != "SKILL.md" else None
+        if skill and skill != skill_of(path):
+            missing.append(f"line {line_of(text, m.start())}: `{m.group(1)}` is in the `{skill.name}` skill; name it")
     assert not missing, "\n".join(missing)
 
 
 @pytest.mark.parametrize("path", DOCS, ids=rel)
-def test_skill_and_agent_references_exist(path):
+def test_skill_and_agent_references_exist(path: Path) -> None:
     text = prose(path)
     problems = []
     for m in re.finditer(r"`([a-z0-9-]+)` (skill|agent)s?\b", text):
@@ -104,7 +108,7 @@ def test_skill_and_agent_references_exist(path):
 
 
 @pytest.mark.parametrize("path", AGENTS + [s / "SKILL.md" for s in SKILLS], ids=rel)
-def test_workflow_step_references_exist(path):
+def test_workflow_step_references_exist(path: Path) -> None:
     text = path.read_text()
     workflow = re.split(r"^## (?:Core )?Workflow$", text, maxsplit=1, flags=re.M)
     steps = set(re.findall(r"^(\d+)\. ", workflow[1].split("\n## ", 1)[0], re.M)) if len(workflow) > 1 else set()
@@ -113,7 +117,7 @@ def test_workflow_step_references_exist(path):
 
 
 @pytest.mark.parametrize("path", [s for s in SKILLS if (s / "references").is_dir()], ids=rel)
-def test_reference_files_are_listed_in_their_skill(path):
+def test_reference_files_are_listed_in_their_skill(path: Path) -> None:
     """Claude only finds a reference file through its SKILL.md."""
     skill = (path / "SKILL.md").read_text()
     unlisted = [p.name for p in (path / "references").glob("*.md") if f"`references/{p.name}`" not in skill]
@@ -121,41 +125,41 @@ def test_reference_files_are_listed_in_their_skill(path):
 
 
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
-def test_every_skill_is_referenced(skill):
+def test_every_skill_is_referenced(skill: Path) -> None:
     """Besides its description, each skill is reachable from the project AGENTS.md, an agent or another skill."""
     others = [p for p in CLAUDE_FILES if skill not in p.parents]
     assert any(f"`{skill.name}`" in prose(p) for p in others), f"no other Claude file names `{skill.name}`"
 
 
-def test_every_agent_is_routed_from_claude_md():
+def test_every_agent_is_routed_from_claude_md() -> None:
     subagents = (CONFIG / "AGENTS.md").read_text().split("## Subagents", 1)[1].split("\n## ", 1)[0]
     missing = sorted(name for name in AGENT_NAMES if f"`{name}`" not in subagents)
     assert not missing, f"config/AGENTS.md does not say when to use {missing}"
 
 
-def test_every_skill_is_routed_from_claude_md():
+def test_every_skill_is_routed_from_claude_md() -> None:
     """The main loop loads skills from the AGENTS.md Skills section; review-checklist is preloaded by code-reviewer."""
     skills = (CONFIG / "AGENTS.md").read_text().split("## Skills", 1)[1].split("\n## ", 1)[0]
     missing = sorted(name for name in SKILL_NAMES - {"review-checklist"} if f"`{name}`" not in skills)
     assert not missing, f"config/AGENTS.md does not say when to use {missing}"
 
 
-def readme_section(title):
+def readme_section(title: str) -> str:
     text = (ROOT / "README.md").read_text()
     return text.split(f"### {title}", 1)[1].split("\n#", 1)[0]
 
 
-def test_readme_lists_every_agent():
+def test_readme_lists_every_agent() -> None:
     listed = set(re.findall(r"^\| \[`([a-z0-9-]+)`\]\([^)]+\) \|", readme_section("Agents"), re.M))
     assert listed == AGENT_NAMES
 
 
-def test_readme_lists_every_skill():
+def test_readme_lists_every_skill() -> None:
     listed = set(re.findall(r"^\| \[`([a-z0-9-]+)`\]\([^)]+\) \|", readme_section("Skills"), re.M))
     assert listed == SKILL_NAMES
 
 
-def test_readme_directory_tree_matches():
+def test_readme_directory_tree_matches() -> None:
     readme = (ROOT / "README.md").read_text()
     tree = next(b.body for b in code_blocks(readme) if "├── agents/" in b.body)
     expected = [f"{p.name}" for p in AGENTS] + [f"{p.name}/" for p in SKILLS]
@@ -164,7 +168,7 @@ def test_readme_directory_tree_matches():
     assert not missing, f"missing from the README directory tree: {missing}"
 
 
-def test_readme_reference_guide_count():
+def test_readme_reference_guide_count() -> None:
     readme = (ROOT / "README.md").read_text()
     for skill in SKILLS:
         count = len(list((skill / "references").glob("*.md")))
