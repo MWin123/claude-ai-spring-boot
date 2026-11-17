@@ -4,12 +4,12 @@ Skills and agents that guide Claude Code to build Spring Boot 4.x / Java 21+ app
 
 ## Quick Start
 
-1. Create a Spring Boot project with Maven or Gradle (e.g. with Spring Initializr). `setup.sh` needs a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise.
+1. Create a Spring Boot project with Maven or Gradle (e.g. with Spring Initializr). `install.py` needs Python 3.13 or later and a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)` and refuses to run otherwise.
 2. Run the script from the project, or pass the project directory:
 
    ```bash
    cd my-project
-   /path/to/claude-ai-spring-boot/setup.sh   # or: setup.sh /path/to/my-project
+   /path/to/claude-ai-spring-boot/install.py   # or: install.py /path/to/my-project
    ```
 
 3. Start `claude` and describe what you want to build:
@@ -19,9 +19,9 @@ Skills and agents that guide Claude Code to build Spring Boot 4.x / Java 21+ app
    > "Build a REST API for managing orders with PostgreSQL"
    ```
 
-The script copies `agents/`, `skills/`, `config/.claude/settings.json` and `config/.claude/hooks/` into `.claude/`, `config/AGENTS.md` and `config/CLAUDE.md` into the project root, and `config/.claude/settings.user.json` to `~/.claude/settings.json`. `AGENTS.md` gets the project name as its top heading (Maven `artifactId`, Gradle `rootProject.name`, else the directory name); `CLAUDE.md` holds only `@AGENTS.md`, an import that works without symlinks (so on Windows too) and leaves the rules readable by other AI agents. The user settings start Claude Code in auto mode, which Claude Code ignores in project settings. To keep token usage down, the project settings allow only the latest models (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.2), cap effort at `xhigh`, turn off fast mode and ultracode, and compact at 750k tokens. A hook denies destructive Bash commands (see [Bash Guard](#bash-guard)).
+The script copies `agents/`, `skills/`, `config/.claude/settings.json` and `config/.claude/hooks/` into `.claude/`, `config/AGENTS.md` and `config/CLAUDE.md` into the project root, and `config/.claude/settings.user.json` to `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`). `AGENTS.md` gets the project name as its top heading (Maven `artifactId`, Gradle `rootProject.name`, else the directory name); `CLAUDE.md` holds only `@AGENTS.md`, an import that works without symlinks (so on Windows too) and leaves the rules readable by other AI agents. The user settings start Claude Code in auto mode, which Claude Code ignores in project settings. To keep token usage down, the project settings allow only the latest models (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.2), cap effort at `xhigh`, turn off fast mode and ultracode, and compact at 750k tokens. A hook denies destructive Bash commands (see [Bash Guard](#bash-guard)).
 
-On a re-run, an existing `AGENTS.md` or `CLAUDE.md` that differs is saved as `AGENTS.md.bak` or `CLAUDE.md.bak` before it is replaced (merge project-specific rules back; later backups are numbered, as in `AGENTS.md.2.bak`), same-named agents, skills and hooks are overwritten, and `.claude/settings.json` and `~/.claude/settings.json` are kept (merge the `hooks` block of `config/.claude/settings.json` and `config/.claude/settings.user.json` into existing settings by hand). Nothing is removed, so delete renamed or dropped agents and skills by hand.
+On a re-run, an existing `AGENTS.md` or `CLAUDE.md` that differs is saved as `AGENTS.md.bak` or `CLAUDE.md.bak` before it is replaced (merge project-specific rules back; later backups are numbered, as in `AGENTS.md.2.bak`), same-named agents, skills and hooks are overwritten, and existing `.claude/settings.json` and `~/.claude/settings.json` files get what they lack from the template: missing keys, and the guard hook entry unless a hook already runs `guard-bash.py`. Values and lists you set stay (so a shorter `availableModels` list gains nothing) and are reported as kept, and a changed file is backed up first, as in `settings.json.bak`. A settings file that isn't valid JSON stops the script before it writes anything. Nothing is removed, so delete renamed or dropped agents and skills by hand.
 
 ## What's Included
 
@@ -110,7 +110,7 @@ Permission patterns such as `Bash(rm -rf /)` miss `sudo rm -fr /` and `cd x && r
 | System | `shutdown`, `reboot`, `halt`, `poweroff`, `systemctl poweroff`, `kill -9 -1`, `killall5`, fork bombs |
 | Database | `flyway clean` (also through Maven and Gradle), `liquibase drop-all`, `dropdb`, `mysqladmin drop`, `redis-cli FLUSHALL` or `FLUSHDB`, `dropDatabase` in mongosh |
 
-The hook needs `python3` (3.13 or later) on the `PATH`; without it, or with an older one, Claude Code shows a hook error and runs the command. Text that is only data passes: a quoted string, or a heredoc that no shell reads. It is a guardrail, not a sandbox: a command hidden in a script file, in a variable or in a computed `eval` string still passes. To change the list, edit `CHECKS` in the script and the cases in `tests/test_guard_bash.py`.
+The hook needs `python3` (3.13 or later) on the `PATH`; without it, or with an older one, Claude Code shows a hook error and runs the command. `install.py` warns when that is the case. Text that is only data passes: a quoted string, or a heredoc that no shell reads. It is a guardrail, not a sandbox: a command hidden in a script file, in a variable or in a computed `eval` string still passes. To change the list, edit `CHECKS` in the script and the cases in `tests/test_guard_bash.py`.
 
 ## Directory Structure
 
@@ -174,15 +174,16 @@ The hook needs `python3` (3.13 or later) on the `PATH`; without it, or with an o
 ├── AGENTS.md               # rules for working on this template
 ├── CLAUDE.md               # @AGENTS.md
 ├── README.md
-├── setup.sh
+├── install.py              # installs the template into a project
 └── LICENSE
 ```
 
 ## Tests
 
-`tests/` checks the template files and stays in this repository. GitHub Actions runs it with `shellcheck setup.sh` on every pull request. Locally:
+`tests/` checks the template files and stays in this repository. GitHub Actions runs it with `mypy --strict install.py config/.claude/hooks tests` on every pull request. Locally:
 
 ```bash
 pip install -r tests/requirements.txt
+mypy --strict install.py config/.claude/hooks tests
 pytest tests
 ```
