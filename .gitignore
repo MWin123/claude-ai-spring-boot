@@ -6,6 +6,7 @@
 ### Claude Code (only the repo settings are shared) ###
 .claude/*
 !.claude/settings.json
+!.claude/hooks/
 
 ### Python (tests/) ###
 __pycache__/

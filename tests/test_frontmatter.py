@@ -109,9 +109,10 @@ def test_auto_mode_stays_out_of_project_settings(path: Path) -> None:
 @pytest.mark.parametrize(("path", "project"), [(PROJECT_SETTINGS[0], CONFIG), (PROJECT_SETTINGS[1], ROOT)], ids=rel)
 def test_bash_guard_hook_is_wired(path: Path, project: Path) -> None:
     """A hook command with a wrong path fails on every Bash call, and only as a warning."""
-    (entry,) = json.loads(path.read_text())["hooks"]["PreToolUse"]
+    entries = json.loads(path.read_text())["hooks"]["PreToolUse"]
+    (entry,) = [e for e in entries if e["matcher"] == "Bash"]
     (hook,) = entry["hooks"]
-    assert entry["matcher"] == "Bash" and hook["type"] == "command"
+    assert hook["type"] == "command"
     script = re.fullmatch(r'python3 "\$\{CLAUDE_PROJECT_DIR\}/(.+)"', hook["command"])
     assert script, hook["command"]
     assert (project / script.group(1)).samefile(CONFIG / ".claude" / "hooks" / "guard-bash.py")

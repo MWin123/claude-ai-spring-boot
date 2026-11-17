@@ -180,10 +180,10 @@ The hook needs `python3` (3.13 or later) on the `PATH`; without it, or with an o
 
 ## Tests
 
-`tests/` checks the template files and stays in this repository. GitHub Actions runs it with `mypy --strict install.py config/.claude/hooks tests` on every pull request. Locally:
+`tests/` checks the template files and stays in this repository. GitHub Actions runs it with `mypy --strict install.py config/.claude/hooks .claude/hooks tests` on every pull request. Locally:
 
 ```bash
 pip install -r tests/requirements.txt
-mypy --strict install.py config/.claude/hooks tests
+mypy --strict install.py config/.claude/hooks .claude/hooks tests
 pytest tests
 ```
