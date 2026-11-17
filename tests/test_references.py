@@ -22,8 +22,8 @@ def prose(path):
 
 def resolve(name, path):
     """A referenced Markdown file: a path relative to the repo, the citing skill, or a unique file name."""
-    if name == "CLAUDE.md" and path in CLAUDE_FILES:
-        return CONFIG / "CLAUDE.md"  # the project's CLAUDE.md, not this repository's
+    if name in ("AGENTS.md", "CLAUDE.md") and path in CLAUDE_FILES:
+        return CONFIG / name  # the project's file, not this repository's
     for base in (ROOT, path.parent, path.parent.parent):
         if (base / name).is_file():
             return base / name
@@ -122,22 +122,22 @@ def test_reference_files_are_listed_in_their_skill(path):
 
 @pytest.mark.parametrize("skill", SKILLS, ids=lambda s: s.name)
 def test_every_skill_is_referenced(skill):
-    """Besides its description, each skill is reachable from the project CLAUDE.md, an agent or another skill."""
+    """Besides its description, each skill is reachable from the project AGENTS.md, an agent or another skill."""
     others = [p for p in CLAUDE_FILES if skill not in p.parents]
     assert any(f"`{skill.name}`" in prose(p) for p in others), f"no other Claude file names `{skill.name}`"
 
 
 def test_every_agent_is_routed_from_claude_md():
-    subagents = (CONFIG / "CLAUDE.md").read_text().split("## Subagents", 1)[1].split("\n## ", 1)[0]
+    subagents = (CONFIG / "AGENTS.md").read_text().split("## Subagents", 1)[1].split("\n## ", 1)[0]
     missing = sorted(name for name in AGENT_NAMES if f"`{name}`" not in subagents)
-    assert not missing, f"config/CLAUDE.md does not say when to use {missing}"
+    assert not missing, f"config/AGENTS.md does not say when to use {missing}"
 
 
 def test_every_skill_is_routed_from_claude_md():
-    """The main loop loads skills from the CLAUDE.md Skills section; review-checklist is preloaded by code-reviewer."""
-    skills = (CONFIG / "CLAUDE.md").read_text().split("## Skills", 1)[1].split("\n## ", 1)[0]
+    """The main loop loads skills from the AGENTS.md Skills section; review-checklist is preloaded by code-reviewer."""
+    skills = (CONFIG / "AGENTS.md").read_text().split("## Skills", 1)[1].split("\n## ", 1)[0]
     missing = sorted(name for name in SKILL_NAMES - {"review-checklist"} if f"`{name}`" not in skills)
-    assert not missing, f"config/CLAUDE.md does not say when to use {missing}"
+    assert not missing, f"config/AGENTS.md does not say when to use {missing}"
 
 
 def readme_section(title):

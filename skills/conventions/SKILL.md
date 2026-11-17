@@ -1,6 +1,6 @@
 ---
 name: conventions
-description: Coding rules for this Spring Boot 4.x project - records with targeted Lombok, constructor injection, contract-first REST, RestClient, Testcontainers, transactions, Problem Details and the default application.yml. Loads with CLAUDE.md; load it only if these rules are not in context.
+description: Coding rules for this Spring Boot 4.x project - records with targeted Lombok, constructor injection, contract-first REST, RestClient, Testcontainers, transactions, Problem Details and the default application.yml. Loads with AGENTS.md; load it only if these rules are not in context.
 ---
 
 # Spring Boot Project Conventions

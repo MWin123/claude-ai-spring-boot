@@ -19,15 +19,15 @@ Skills and agents that guide Claude Code to build Spring Boot 4.x / Java 21+ app
    > "Build a REST API for managing orders with PostgreSQL"
    ```
 
-The script copies `agents/`, `skills/` and `config/settings.json` into `.claude/`, and `config/CLAUDE.md` into the project root with the project name as its top heading (Maven `artifactId`, Gradle `rootProject.name`, else the directory name).
+The script copies `agents/`, `skills/` and `config/.claude/settings.json` into `.claude/`, and `config/AGENTS.md` and `config/CLAUDE.md` into the project root. `AGENTS.md` gets the project name as its top heading (Maven `artifactId`, Gradle `rootProject.name`, else the directory name); `CLAUDE.md` holds only `@AGENTS.md`, an import that works without symlinks (so on Windows too) and leaves the rules readable by other AI agents.
 
-On a re-run, an existing `CLAUDE.md` is saved as `CLAUDE.md.bak` before it is replaced (merge project-specific rules back), same-named agents and skills are overwritten, and `.claude/settings.json` is kept. Nothing is removed, so delete renamed or dropped agents and skills by hand.
+On a re-run, an existing `AGENTS.md` or `CLAUDE.md` that differs is saved as `AGENTS.md.bak` or `CLAUDE.md.bak` before it is replaced (merge project-specific rules back), same-named agents and skills are overwritten, and `.claude/settings.json` is kept. Nothing is removed, so delete renamed or dropped agents and skills by hand.
 
 ## What's Included
 
-### CLAUDE.md ([`config/CLAUDE.md`](config/CLAUDE.md))
+### AGENTS.md ([`config/AGENTS.md`](config/AGENTS.md))
 
-Copied into the project root and loaded in every session. It holds the rules for Claude in the generated project:
+Copied into the project root and loaded in every session through the `@AGENTS.md` import in `CLAUDE.md`. It holds the rules for Claude in the generated project:
 
 - **Build tool:** detects Maven or Gradle once per session, with a command table for build, test, run and image.
 - **Workflow:** plan mode, proof before "done".
@@ -44,7 +44,7 @@ Subagents for work that pays off in a fresh context. The main agent does develop
 | [`tests`](agents/tests.md) | Runs the test suite, returns only failing tests |
 | [`docs-researcher`](agents/docs-researcher.md) | Researches version-specific docs, release notes and GitHub issues across several sources; returns a short, sourced answer |
 
-`docs-researcher` and `CLAUDE.md` prefer the MCP servers `TinyFish`, `Firecrawl` and `github` (installed under those names) and fall back to WebSearch/WebFetch without them.
+`docs-researcher` and `AGENTS.md` prefer the MCP servers `TinyFish`, `Firecrawl` and `github` (installed under those names) and fall back to WebSearch/WebFetch without them.
 
 ### Skills ([`skills/`](skills/))
 
@@ -52,7 +52,7 @@ Knowledge that Claude loads when the task needs it:
 
 | Skill | What it teaches |
 |-------|-----------------|
-| [`conventions`](skills/conventions/SKILL.md) | Mandatory project rules, loaded with `CLAUDE.md` (see [Conventions](#conventions)) |
+| [`conventions`](skills/conventions/SKILL.md) | Mandatory project rules, loaded with `AGENTS.md` (see [Conventions](#conventions)) |
 | [`spring-boot`](skills/spring-boot/SKILL.md) | Core development workflow with 8 reference guides (OpenAPI, web, Swagger UI, data, security, cloud, Spring AI, Boot 4 changes) |
 | [`code-quality`](skills/code-quality/SKILL.md) | Clean code principles and Java pitfalls |
 | [`design-patterns`](skills/design-patterns/SKILL.md) | Spring forms of the classic patterns; Outbox, Saga and CQRS |
@@ -71,7 +71,7 @@ Knowledge that Claude loads when the task needs it:
 - **Java:** records for DTOs, Lombok only where a record can't replace the boilerplate, constructor injection, Jakarta Persistence.
 - **REST:** contract-first. A hand-written `src/main/resources/static/openapi.yaml` defines the endpoints, openapi-generator creates the interfaces and models at build time, and controllers implement them. Swagger UI at `/swagger-ui.html`, spec at `/openapi.yaml`.
 - **HTTP and tests:** `RestClient` for blocking calls; `RestTestClient` and Testcontainers with `@ServiceConnection` for integration tests.
-- **Build and project:** Maven or Gradle, detected once per session. Base package = group ID; the project name is the top heading of `CLAUDE.md`.
+- **Build and project:** Maven or Gradle, detected once per session. Base package = group ID; the project name is the top heading of `AGENTS.md`.
 - **Infrastructure:** Docker Compose for local dependencies; no CI pipeline unless asked.
 
 ## Usage
@@ -97,7 +97,8 @@ To change the API later, edit the spec and rebuild; never edit generated code.
 
 ```
 .
-├── .claude/settings.json   # settings for working on this template
+├── .claude/
+│   └── settings.json       # settings for working on this template
 ├── .github/workflows/claude-files.yml
 ├── agents/
 │   ├── code-reviewer.md
@@ -143,10 +144,13 @@ To change the API later, edit the spec and rebuild; never edit generated code.
 │       └── references/
 │           └── integration.md
 ├── config/                 # copied into the project
-│   ├── CLAUDE.md           # project rules (project root)
-│   └── settings.json       # .claude/settings.json
+│   ├── .claude/
+│   │   └── settings.json   # .claude/settings.json
+│   ├── AGENTS.md           # project rules (project root)
+│   └── CLAUDE.md           # @AGENTS.md (project root)
 ├── tests/                  # checks for this template, not copied
-├── CLAUDE.md               # rules for working on this template
+├── AGENTS.md               # rules for working on this template
+├── CLAUDE.md               # @AGENTS.md
 ├── README.md
 ├── setup.sh
 └── LICENSE

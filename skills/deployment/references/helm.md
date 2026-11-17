@@ -4,7 +4,7 @@ The workload rules (probes, graceful shutdown, resources, security context) are 
 
 ## Chart Layout
 
-Default location: `helm/<app-name>/` (or the existing chart directory); chart name = `<app-name>`. The project version is read as in the Build Tool section of `CLAUDE.md`.
+Default location: `helm/<app-name>/` (or the existing chart directory); chart name = `<app-name>`. The project version is read as in the Build Tool section of `AGENTS.md`.
 
 ```
 helm/<app-name>/

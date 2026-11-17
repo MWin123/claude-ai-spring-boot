@@ -6,7 +6,7 @@ user-invocable: false
 
 # Review Checklist
 
-This list says what to flag, not how to write code. The rules themselves are in the `conventions` skill (loaded with `CLAUDE.md`), the Lombok rules in `.claude/skills/java-modern/references/lombok.md` and the Boot 4 changes in `.claude/skills/spring-boot/references/boot4.md`; Read those files only when the change touches them.
+This list says what to flag, not how to write code. The rules themselves are in the `conventions` skill (loaded with `AGENTS.md`), the Lombok rules in `.claude/skills/java-modern/references/lombok.md` and the Boot 4 changes in `.claude/skills/spring-boot/references/boot4.md`; Read those files only when the change touches them.
 
 ## Correctness
 - Null safety: chained calls without null checks, `Optional.get()` (use `orElseThrow()` or `orElse()`), returning null instead of Optional or empty collection
