@@ -14,7 +14,8 @@ GitHub (PRs, comments, files, commits): the `mcp__github__*` tools, not web scra
 - Fix findings with a plan, one at a time: verify, commit, push and tick it in the comment before starting the next. After every push to a branch with an open PR, also when nobody mentioned a review, read its review comments and tick each open finding the pushed commits fix.
 
 ## Commits and Pull Requests
-- Short title, then a one- or two-sentence body that says what changed.
+- Commit messages follow the 50/72 rule: a title of at most 50 characters, a blank line, then a one- or two-sentence body that says what changed, in lines of at most 72 characters; the `Co-Authored-By` line is exempt.
+- No `Fixes`, `Closes` or other issue keywords, and no issue numbers, in commits unless the user asks for them.
 - Author and committer: the configured git identity. If it is unset or Claude's own (`noreply@anthropic.com`, as in cloud sessions), look up the GitHub login with `get_me` and commit with `git -c user.name=<login> -c user.email=<login>@users.noreply.github.com commit --no-gpg-sign`; if the lookup fails, ask.
 - Commits end with `Co-Authored-By: Claude <noreply@anthropic.com>`, so GitHub shows both.
 - No `Claude-Session` lines in commits or pull requests.

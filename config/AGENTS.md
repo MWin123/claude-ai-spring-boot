@@ -26,10 +26,6 @@
 - Never mark a task done without proof: run tests, check logs, diff behavior against main when relevant.
 - Make the simplest change that works; find root causes, no temporary fixes.
 
-## Commits
-- Commit messages follow the 50/72 rule: a title of at most 50 characters, a blank line, then body lines of at most 72 characters; the `Co-Authored-By: Claude <noreply@anthropic.com>` line is exempt.
-- No `Fixes`, `Closes` or other issue keywords, and no issue numbers, in commits unless the user asks for them.
-
 ## Skills
 - The `conventions` skill holds the rules for all code in this project and loads with this file; if its rules aren't in your context, load the skill before writing or reviewing code: @.claude/skills/conventions/SKILL.md
 - Features, endpoints and entities follow the Core Workflow of the `spring-boot` skill. Schema changes: `db-migrations`. Images, Compose, CI, Kubernetes and Helm: `deployment`. Tests: `testing-patterns`. Upgrades to Boot 4: `boot-migration`.

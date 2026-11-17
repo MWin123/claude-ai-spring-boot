@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "auto"
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Force-pushing with --force-with-lease to a feature branch (never main or master) is allowed when Claude has squashed, amended, split or reordered commits on that branch and the user's latest message explicitly asks to push."
+    ],
+    "soft_deny": [
+      "$defaults"
+    ],
+    "hard_deny": [
+      "$defaults",
+      "Never run a command that recursively deletes the root filesystem, such as rm -rf /."
+    ]
+  }
+}

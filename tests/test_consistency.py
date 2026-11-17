@@ -1,5 +1,6 @@
 """Facts repeated across files stay identical."""
 import re
+from pathlib import Path
 
 import pytest
 
@@ -8,9 +9,9 @@ from helpers import CLAUDE_FILES, DOCS, ROOT, code_blocks, frontmatter, rel
 SWAGGER_UI_MD = ROOT / "skills" / "spring-boot" / "references" / "swagger-ui.md"
 
 
-def docs_matchers():
+def docs_matchers() -> dict[str, list[str]]:
     """The permitted OpenAPI/Swagger UI paths of every security example, by location."""
-    found = {}
+    found: dict[str, list[str]] = {}
     for path in CLAUDE_FILES:
         for block in code_blocks(path.read_text()):
             for offset, line in enumerate(block.body.splitlines()):
@@ -19,19 +20,20 @@ def docs_matchers():
     return found
 
 
-def test_security_examples_permit_the_same_docs_paths():
+def test_security_examples_permit_the_same_docs_paths() -> None:
     found = docs_matchers()
     assert len(found) >= 2, f"expected the matchers in swagger-ui.md and security.md, found {list(found)}"
     assert len({tuple(paths) for paths in found.values()}) == 1, found
 
 
-def test_prefixed_docs_matchers_match_the_defaults():
+def test_prefixed_docs_matchers_match_the_defaults() -> None:
     base = next(iter(docs_matchers().values()))
-    sentence = re.search(r"Prefix the security matchers the same way \(([^)]*)\)", SWAGGER_UI_MD.read_text()).group(1)
-    assert re.findall(r"`(/[^`]+)`", sentence) == ["/api/users" + p for p in base]
+    sentence = re.search(r"Prefix the security matchers the same way \(([^)]*)\)", SWAGGER_UI_MD.read_text())
+    assert sentence, "swagger-ui.md lost the sentence on prefixed matchers"
+    assert re.findall(r"`(/[^`]+)`", sentence.group(1)) == ["/api/users" + p for p in base]
 
 
-def test_versions_agree():
+def test_versions_agree() -> None:
     """A library's version is the same wherever it is spelled out (placeholders like 7.x.y are ignored)."""
     libraries = {
         "openapi-generator": r"openapi-generator|org\.openapi\.generator",
@@ -39,7 +41,7 @@ def test_versions_agree():
         "Spring Cloud": r"spring-cloud-dependencies|spring-cloud\.version",
     }
     for library, pattern in libraries.items():
-        versions = {}
+        versions: dict[str, list[str]] = {}
         for path in CLAUDE_FILES:
             for n, line in enumerate(path.read_text().splitlines(), 1):
                 if re.search(pattern, line):
@@ -48,21 +50,21 @@ def test_versions_agree():
         assert len(versions) <= 1, f"{library} versions disagree: {versions}"
 
 
-def test_boot_versions_agree():
+def test_boot_versions_agree() -> None:
     """Every spelled-out Spring Boot version (parent, Gradle plugin, "Boot 4.1.2") is the same."""
     pattern = re.compile(
         r"spring-boot-starter-parent</artifactId>\s*<version>(\d+\.\d+\.\d+)"
         r'|id\("org\.springframework\.boot"\) version "(\d+\.\d+\.\d+)"'
         r"|\bBoot:? (\d+\.\d+\.\d+)"
     )
-    versions = {}
+    versions: dict[str, list[str]] = {}
     for path in DOCS:
         for m in pattern.finditer(path.read_text()):
             versions.setdefault(next(g for g in m.groups() if g), []).append(rel(path))
     assert len(versions) <= 1, f"Spring Boot versions disagree: {versions}"
 
 
-def test_examples_use_spring_boot_4():
+def test_examples_use_spring_boot_4() -> None:
     old = []
     for path in CLAUDE_FILES:
         text = path.read_text()
@@ -75,7 +77,7 @@ def test_examples_use_spring_boot_4():
     assert not old, "\n".join(old)
 
 
-def test_code_review_findings_are_checkboxes():
+def test_code_review_findings_are_checkboxes() -> None:
     """The code-reviewer report is the PR comment whose checkboxes "Reviews" in the git-workflow skill tracks."""
     report = next(b for b in code_blocks((ROOT / "agents/code-reviewer.md").read_text()) if b.lang == "markdown")
     findings = [line for line in report.body.splitlines() if line.startswith("- ") and "✅" not in line]
@@ -83,7 +85,7 @@ def test_code_review_findings_are_checkboxes():
     assert "## Reviews" in (ROOT / "skills/git-workflow/SKILL.md").read_text(), "git-workflow lost its Reviews section"
 
 
-def test_docs_researcher_tool_order_matches_its_tools():
+def test_docs_researcher_tool_order_matches_its_tools() -> None:
     """Every web tool the agent may call has a place in its Tool Order, and the order names no tool it lacks."""
     path = ROOT / "agents/docs-researcher.md"
     order = path.read_text().split("## Tool Order", 1)[1].split("\n## ", 1)[0]
@@ -97,7 +99,7 @@ def test_docs_researcher_tool_order_matches_its_tools():
 
 
 @pytest.mark.parametrize("path", [ROOT / "AGENTS.md", ROOT / "config/AGENTS.md"], ids=rel)
-def test_tools_section_routes_image_downloads_to_image_fetcher(path):
+def test_tools_section_routes_image_downloads_to_image_fetcher(path: Path) -> None:
     """Only the image-fetcher skill downloads images; the WebSearch/WebFetch fallback stays the last Tools line."""
     tools = path.read_text().split("## Tools", 1)[1].split("\n## ", 1)[0]
     lines = [line for line in tools.splitlines() if line.startswith("- ")]
@@ -108,7 +110,7 @@ def test_tools_section_routes_image_downloads_to_image_fetcher(path):
 
 
 @pytest.mark.parametrize("path", [ROOT / "CLAUDE.md", ROOT / "config/CLAUDE.md"], ids=rel)
-def test_claude_md_only_imports_agents_md(path):
+def test_claude_md_only_imports_agents_md(path: Path) -> None:
     """The rules live in AGENTS.md; CLAUDE.md only imports the one next to it (works without symlinks)."""
     assert path.read_text() == "@AGENTS.md\n"
     assert (path.parent / "AGENTS.md").is_file()

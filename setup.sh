@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Copies agents, skills, config/.claude/settings.json, config/AGENTS.md and config/CLAUDE.md into a Spring Boot project.
+# Copies agents, skills, config/.claude (settings.json, hooks), config/AGENTS.md and config/CLAUDE.md into a Spring Boot project,
+# and config/.claude/settings.user.json to ~/.claude/settings.json.
 # Usage: ./setup.sh [project-dir]   (defaults to the current directory)
 set -euo pipefail
 
@@ -50,26 +51,44 @@ trap 'rm -f "$AGENTS_MD"' EXIT
 # Copies $1 to the project root as $2; a different existing file is backed up first
 install_root_file() {
   local source="$1" target="$TARGET_DIR/$2"
+  # cp would write through a symlink into the file it points to; that file stays as it is
+  if [[ -L "$target" ]]; then
+    rm "$target"
+    echo "Existing $2 was a symlink; replaced by a file"
+  fi
   if [[ -f "$target" ]] && ! cmp -s "$source" "$target"; then
-    local backup="$target.bak"
+    local backup="$target.bak" n=1
     # Never overwrite an earlier backup: it may hold the project's original rules
-    [[ -e "$backup" ]] && backup="$target.$(date +%Y%m%d%H%M%S).bak"
+    while [[ -e "$backup" ]]; do
+      n=$((n + 1))
+      backup="$target.$n.bak"
+    done
     cp "$target" "$backup"
     echo "Existing $2 saved as $(basename "$backup")"
   fi
   cp "$source" "$target"
 }
 
-mkdir -p "$TARGET_DIR/.claude/agents" "$TARGET_DIR/.claude/skills"
+mkdir -p "$TARGET_DIR/.claude/agents" "$TARGET_DIR/.claude/skills" "$TARGET_DIR/.claude/hooks"
 cp -r "$SOURCE_DIR/agents/." "$TARGET_DIR/.claude/agents/"
 cp -r "$SOURCE_DIR/skills/." "$TARGET_DIR/.claude/skills/"
+cp -r "$SOURCE_DIR/config/.claude/hooks/." "$TARGET_DIR/.claude/hooks/"
 # Never overwrite existing settings: they may hold the project's permissions and hooks
 if [[ -e "$TARGET_DIR/.claude/settings.json" ]]; then
-  echo "Existing .claude/settings.json kept"
+  echo "Existing .claude/settings.json kept; merge the hooks block of config/.claude/settings.json into it for the Bash guard"
 else
   cp "$SOURCE_DIR/config/.claude/settings.json" "$TARGET_DIR/.claude/settings.json"
+fi
+# Auto mode only works from user settings; Claude Code ignores it in project settings
+USER_SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+if [[ -e "$USER_SETTINGS" ]]; then
+  echo "Existing $USER_SETTINGS kept; merge config/.claude/settings.user.json into it for auto mode"
+else
+  mkdir -p "$(dirname "$USER_SETTINGS")"
+  cp "$SOURCE_DIR/config/.claude/settings.user.json" "$USER_SETTINGS"
+  echo "Copied user settings (auto mode) to $USER_SETTINGS"
 fi
 install_root_file "$AGENTS_MD" AGENTS.md
 install_root_file "$SOURCE_DIR/config/CLAUDE.md" CLAUDE.md
 
-echo "Copied agents, skills, settings.json, AGENTS.md and CLAUDE.md to $TARGET_DIR (project: $NAME)"
+echo "Copied agents, skills, hooks, settings.json, AGENTS.md and CLAUDE.md to $TARGET_DIR (project: $NAME)"
