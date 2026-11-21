@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from helpers import (
-    AGENTS, CLAUDE_FILES, CONFIG, DOCS, ROOT, SKILLS, code_blocks, code_blocks_blanked, headings, line_of, rel,
+    AGENTS, CLAUDE_FILES, CONFIG, DOCS, FOLDER_READMES, ROOT, SKILLS, code_blocks_blanked, headings,
+    line_of, rel, slug,
 )
 
 AGENT_NAMES = {p.stem for p in AGENTS}
@@ -144,34 +145,50 @@ def test_every_skill_is_routed_from_claude_md() -> None:
     assert not missing, f"config/AGENTS.md does not say when to use {missing}"
 
 
-def readme_section(title: str) -> str:
-    text = (ROOT / "README.md").read_text()
-    return text.split(f"### {title}", 1)[1].split("\n#", 1)[0]
+AGENTS_README = ROOT / "agents" / "README.md"
+SKILLS_README = ROOT / "skills" / "README.md"
+TABLE_ROW = re.compile(r"^\| \[`([a-z0-9-]+)`\]\(([^)]+)\) \|", re.M)
 
 
-def test_readme_lists_every_agent() -> None:
-    listed = set(re.findall(r"^\| \[`([a-z0-9-]+)`\]\([^)]+\) \|", readme_section("Agents"), re.M))
-    assert listed == AGENT_NAMES
+@pytest.mark.parametrize(("readme", "names", "link"),
+                         [(AGENTS_README, AGENT_NAMES, "{}.md"), (SKILLS_README, SKILL_NAMES, "{}/SKILL.md")],
+                         ids=["agents", "skills"])
+def test_readme_table_lists_every_entry(readme: Path, names: set[str], link: str) -> None:
+    """Each agent or skill has one row, which links to its own file."""
+    rows = TABLE_ROW.findall(readme.read_text())
+    assert sorted(name for name, _ in rows) == sorted(names)
+    wrong = [f"{name} -> {target}" for name, target in rows if target != link.format(name)]
+    assert not wrong, f"{rel(readme)}: rows link to another file: {wrong}"
 
 
-def test_readme_lists_every_skill() -> None:
-    listed = set(re.findall(r"^\| \[`([a-z0-9-]+)`\]\([^)]+\) \|", readme_section("Skills"), re.M))
-    assert listed == SKILL_NAMES
+def test_readme_links_resolve() -> None:
+    """Relative Markdown links in the READMEs point at existing files; a fragment on a Markdown file names a heading."""
+    for readme in [ROOT / "README.md", *FOLDER_READMES]:
+        links = re.findall(r"\]\((?!https?:|#)([^)#\s]+)(?:#([^)\s]*))?\)", code_blocks_blanked(readme.read_text()))
+        for link, fragment in links:
+            target = readme.parent / link
+            assert target.exists(), f"{rel(readme)}: broken link {link}"
+            if fragment and target.suffix == ".md":
+                slugs = {slug(title) for _, title in headings(target.read_text())}
+                assert fragment in slugs, f"{rel(readme)}: {link} has no heading #{fragment}"
 
 
-def test_readme_directory_tree_matches() -> None:
-    readme = (ROOT / "README.md").read_text()
-    tree = next(b.body for b in code_blocks(readme) if "├── agents/" in b.body)
-    expected = [f"{p.name}" for p in AGENTS] + [f"{p.name}/" for p in SKILLS]
-    expected += [p.name for p in (ROOT / "skills").glob("*/references/*.md")]
-    missing = [name for name in expected if name not in tree]
-    assert not missing, f"missing from the README directory tree: {missing}"
+def test_readme_line_anchors_match() -> None:
+    """A link such as [`CHECKS`](guard-bash.py#L445) points at the line that defines that name; line links take no other form."""
+    for readme in [ROOT / "README.md", *FOLDER_READMES]:
+        text = readme.read_text()
+        links = re.findall(r"\[`(\w+)`\]\(([^)#\s]+)#L(\d+)\)", text)
+        assert len(links) == len(re.findall(r"\]\([^)\s]*#L\d", text)), f"{rel(readme)}: a line link needs a [`NAME`] text"
+        for name, file, line in links:
+            target = (readme.parent / file).read_text().splitlines()[int(line) - 1]
+            defines = re.match(rf"(?:def |class )?{name}\b\s*[:=(]", target)
+            assert defines, f"{rel(readme)}: line {line} of {file} does not define `{name}`: {target!r}"
 
 
 def test_readme_reference_guide_count() -> None:
-    readme = (ROOT / "README.md").read_text()
+    readme = SKILLS_README.read_text()
     for skill in SKILLS:
         count = len(list((skill / "references").glob("*.md")))
-        m = re.search(rf"^\| \[`{skill.name}`\]\([^)]+\) \|.*?(\d+) reference guides", readme, re.M)
-        if m:
-            assert int(m.group(1)) == count, f"README says {m.group(1)} reference guides for {skill.name}, found {count}"
+        m = re.search(rf"^\| \[`{skill.name}`\]\([^)]+\) \|.*?(\d+) reference guides?\b", readme, re.M)
+        stated = int(m.group(1)) if m else 0
+        assert stated == count, f"README says {stated} reference guides for {skill.name}, found {count}"

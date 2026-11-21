@@ -7,11 +7,14 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-AGENTS = sorted((ROOT / "agents").glob("*.md"))
+FOLDER_READMES = [ROOT / "agents/README.md", ROOT / "skills/README.md", ROOT / "config/.claude/hooks/README.md"]
+AGENTS = sorted(p for p in (ROOT / "agents").glob("*.md") if p not in FOLDER_READMES)
 SKILLS = sorted(p.parent for p in (ROOT / "skills").glob("*/SKILL.md"))
 CONFIG = ROOT / "config"  # AGENTS.md, CLAUDE.md, .claude/settings.json and .claude/settings.user.json for Spring Boot projects
-CLAUDE_FILES = AGENTS + sorted((ROOT / "skills").rglob("*.md")) + [CONFIG / "AGENTS.md"]
-DOCS = CLAUDE_FILES + [ROOT / "README.md", ROOT / "AGENTS.md"]
+SKILL_FILES = sorted(p for p in (ROOT / "skills").rglob("*.md") if p not in FOLDER_READMES)
+CLAUDE_FILES = AGENTS + SKILL_FILES + [CONFIG / "AGENTS.md"]
+# Folder READMEs document this repository and are not installed (install.py skips them)
+DOCS = CLAUDE_FILES + [ROOT / "README.md", ROOT / "AGENTS.md"] + FOLDER_READMES
 
 
 def rel(path: Path) -> str:
@@ -29,6 +32,11 @@ def headings(text: str) -> list[tuple[int, str]]:
     """(offset, title) of every Markdown heading outside code blocks."""
     prose = code_blocks_blanked(text)
     return [(m.start(), m.group(1).strip()) for m in re.finditer(r"^#+\s+(.+)$", prose, re.M)]
+
+
+def slug(title: str) -> str:
+    """The anchor GitHub gives a heading: lower case, punctuation dropped, spaces as hyphens."""
+    return re.sub(r"[^\w\- ]", "", title.lower()).replace(" ", "-")
 
 
 @dataclass

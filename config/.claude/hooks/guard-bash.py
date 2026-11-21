@@ -441,18 +441,42 @@ def always(reason: str) -> Check:
     return lambda args, cwd: reason
 
 
+# Commands the guard checks, by name; mkfs* is matched by prefix in check_words
 CHECKS: dict[str, Check] = {
-    "rm": check_rm, "find": check_find, "chmod": check_permissions, "chown": check_permissions,
-    "chgrp": check_permissions, "dd": check_dd, "shred": always("it overwrites files beyond recovery"),
-    "wipefs": always("it wipes a disk"), "git": check_git, "gh": check_gh, "kubectl": check_kubectl,
-    "helm": check_helm, "terraform": check_terraform, "tofu": check_terraform, "pulumi": check_pulumi,
-    "kill": check_kill, "systemctl": check_systemctl, "flyway": check_flyway, "mvn": check_build,
-    "mvnw": check_build, "gradle": check_build, "gradlew": check_build, "liquibase": check_liquibase,
-    "dropdb": always("it drops a database"), "mysqladmin": check_mysqladmin, "redis-cli": check_redis,
-    "mongosh": check_mongo, "mongo": check_mongo,
+    "chgrp": check_permissions,
+    "chmod": check_permissions,
+    "chown": check_permissions,
+    "dd": check_dd,
+    "dropdb": always("it drops a database"),
+    "find": check_find,
+    "flyway": check_flyway,
+    "gh": check_gh,
+    "git": check_git,
+    "gradle": check_build,
+    "gradlew": check_build,
+    "halt": always("it shuts the machine down"),
+    "helm": check_helm,
+    "kill": check_kill,
+    "killall5": always("it kills every process"),
+    "kubectl": check_kubectl,
+    "liquibase": check_liquibase,
+    "mongo": check_mongo,
+    "mongosh": check_mongo,
+    "mvn": check_build,
+    "mvnw": check_build,
+    "mysqladmin": check_mysqladmin,
+    "poweroff": always("it shuts the machine down"),
+    "pulumi": check_pulumi,
+    "reboot": always("it shuts the machine down"),
+    "redis-cli": check_redis,
+    "rm": check_rm,
+    "shred": always("it overwrites files beyond recovery"),
+    "shutdown": always("it shuts the machine down"),
+    "systemctl": check_systemctl,
+    "terraform": check_terraform,
+    "tofu": check_terraform,
+    "wipefs": always("it wipes a disk"),
 }
-CHECKS.update({name: always("it shuts the machine down") for name in ("shutdown", "reboot", "halt", "poweroff")})
-CHECKS["killall5"] = always("it kills every process")
 
 
 def unwrapped(words: list[str]) -> list[str]:
