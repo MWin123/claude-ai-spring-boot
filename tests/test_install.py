@@ -5,6 +5,7 @@ import filecmp
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -57,14 +58,33 @@ def expected(file: str) -> str:
 ROOT_FILES = pytest.mark.parametrize("file", ["AGENTS.md", "CLAUDE.md"])
 
 
-def assert_same_tree(source: Path, target: Path) -> None:
-    diff = filecmp.dircmp(source, target)
+def assert_same_tree(source: Path, target: Path, top: bool = True) -> None:
+    """The trees match, except for the README.md of the top folder, which documents this repository."""
+    diff = filecmp.dircmp(source, target, ignore=filecmp.DEFAULT_IGNORES + ["README.md"] * top)
     differs = {"missing": diff.left_only, "extra": diff.right_only,
                "different": diff.diff_files, "not compared": diff.funny_files}
     assert not any(differs.values()), f"{target}: " + ", ".join(
         f"{kind} {names}" for kind, names in differs.items() if names)
     for sub in diff.common_dirs:
-        assert_same_tree(source / sub, target / sub)
+        assert_same_tree(source / sub, target / sub, top=False)
+
+
+def test_skips_only_the_top_readme(tmp_path: Path) -> None:
+    """A README.md deeper in a copied folder belongs to a skill and is installed; install.py runs from a scratch template."""
+    source, target = tmp_path / "template", tmp_path / "demo"
+    shutil.copytree(CONFIG, source / "config")
+    shutil.copy(INSTALL, source)
+    for file in ["agents/README.md", "skills/README.md", "skills/demo/SKILL.md", "skills/demo/README.md"]:
+        (source / file).parent.mkdir(parents=True, exist_ok=True)
+        (source / file).write_text("demo")
+    target.mkdir()
+    (target / "pom.xml").write_text(POM)
+
+    result = subprocess.run([sys.executable, str(source / "install.py"), str(target)], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    claude = target / ".claude"
+    assert sorted(str(p.relative_to(claude)) for p in claude.rglob("README.md")) == ["skills/demo/README.md"]
 
 
 @pytest.mark.parametrize(
@@ -81,6 +101,8 @@ def test_copies_only_the_claude_files(tmp_path: Path, build_file: str) -> None:
     assert_same_tree(ROOT / "agents", tmp_path / ".claude" / "agents")
     assert_same_tree(ROOT / "skills", tmp_path / ".claude" / "skills")
     assert_same_tree(CONFIG / ".claude" / "hooks", tmp_path / ".claude" / "hooks")
+    for folder in ["agents", "skills", "hooks"]:
+        assert not (tmp_path / ".claude" / folder / "README.md").exists(), "folder READMEs document this repository only"
     assert filecmp.cmp(CONFIG / ".claude" / "settings.json", tmp_path / ".claude" / "settings.json", shallow=False)
     assert (tmp_path / "AGENTS.md").read_text() == expected_agents_md("demo" if build_file == "pom.xml" else tmp_path.name)
     assert filecmp.cmp(CONFIG / "CLAUDE.md", tmp_path / "CLAUDE.md", shallow=False)

@@ -3,7 +3,7 @@
 ## Repository
 - This is a template, not an application: agents, skills and config that `install.py` copies into Spring Boot projects. There is no Spring Boot build here.
 - No project uses the template yet: `install.py` installs from scratch, so add no upgrade path, migration steps or backward compatibility.
-- Copied into projects: `agents/` and `skills/` (to `.claude/`), `config/.claude/settings.json` and `config/.claude/hooks/` (to `.claude/`), `config/AGENTS.md` and `config/CLAUDE.md` (to the project root), and `config/.claude/settings.user.json` (to `~/.claude/settings.json`). Everything else (`tests/`, `.github/`, `.claude/settings.json`, README, `CLAUDE.md`, this file) stays here.
+- Copied into projects: `agents/` and `skills/` (to `.claude/`), `config/.claude/settings.json` and `config/.claude/hooks/` (to `.claude/`), `config/AGENTS.md` and `config/CLAUDE.md` (to the project root), and `config/.claude/settings.user.json` (to `~/.claude/settings.json`). Everything else (`tests/`, `.github/`, `.claude/settings.json`, the READMEs, `CLAUDE.md`, this file) stays here; `install.py` skips the top-level `README.md` of each copied folder.
 - `config/AGENTS.md` holds the rules for generated projects; don't apply them to this repository.
 - Rules go into `AGENTS.md`; each `CLAUDE.md` holds only `@AGENTS.md`, which imports the file next to it.
 
@@ -16,7 +16,7 @@
 
 ## Consistency
 - A renamed section, file, workflow step, agent or skill must be renamed everywhere it is cited; the tests in `tests/test_references.py` find stale references.
-- New or renamed agents and skills go into the README tables and directory tree.
+- New or renamed agents and skills go into the tables in `agents/README.md` and `skills/README.md`.
 - Facts repeated across files stay identical: docs security matchers, library versions, Boot 4 versions. Example code follows the template's own rules: contract-first controllers implementing generated `*Api` interfaces, exception handlers returning `ProblemDetail`, no Boot 3 leftovers.
 - When a test rule is too strict for a legitimate example, narrow the rule or add a documented exemption in the test; never weaken the example to satisfy it.
 

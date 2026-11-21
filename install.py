@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Installs the template into a Spring Boot project.
 
-Copies agents, skills and config/.claude/hooks into .claude/, config/AGENTS.md and config/CLAUDE.md into the project
+Copies agents, skills and config/.claude/hooks (without their top-level README.md) into .claude/, config/AGENTS.md and config/CLAUDE.md into the project
 root, and merges config/.claude/settings.json into .claude/settings.json and config/.claude/settings.user.json into
 ~/.claude/settings.json. Usage: ./install.py [project-dir]   (defaults to the current directory)
 """
@@ -168,7 +168,9 @@ def main(args: list[str]) -> None:
 
     for source, dest in [(SOURCE / "agents", "agents"), (SOURCE / "skills", "skills"),
                          (CONFIG / ".claude" / "hooks", "hooks")]:
-        shutil.copytree(source, target / ".claude" / dest, dirs_exist_ok=True)
+        # The folder's own README documents this repository; a README.md deeper down belongs to a skill
+        shutil.copytree(source, target / ".claude" / dest, dirs_exist_ok=True,
+                        ignore=lambda folder, _: {"README.md"} if Path(folder) == source else set())
     install_settings(CONFIG / ".claude" / "settings.json", project_settings, existing_project,
                      "project settings (Bash guard)")
     install_settings(CONFIG / ".claude" / "settings.user.json", user_settings, existing_user,
