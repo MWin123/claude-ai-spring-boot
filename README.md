@@ -41,7 +41,9 @@ On a re-run, same-named agents, skills and hooks are overwritten; a changed `AGE
 ```
 .
 ├── .claude/settings.json   # settings for working on this template; runs the hook in config/
-├── .github/workflows/claude-files.yml
+├── .github/
+│   ├── dependabot.yml      # monthly grouped updates for tests/ and Actions
+│   └── workflows/claude-files.yml
 ├── agents/                 # subagents, see agents/README.md
 ├── skills/                 # skills, see skills/README.md
 ├── config/                 # copied into the project

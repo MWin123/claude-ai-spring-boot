@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/tests"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 5
+    groups:
+      test-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 5
+    groups:
+      actions:
+        patterns: ["*"]
