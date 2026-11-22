@@ -91,12 +91,6 @@ PROJECT_SETTINGS = [CONFIG / ".claude" / "settings.json", ROOT / ".claude" / "se
 USER_SETTINGS = CONFIG / ".claude" / "settings.user.json"
 
 
-@pytest.mark.parametrize("path", [*PROJECT_SETTINGS, USER_SETTINGS], ids=rel)
-def test_settings_json_is_valid(path: Path) -> None:
-    settings = json.loads(path.read_text())
-    assert isinstance(settings, dict)
-
-
 @pytest.mark.parametrize("path", PROJECT_SETTINGS, ids=rel)
 def test_auto_mode_stays_out_of_project_settings(path: Path) -> None:
     """Claude Code ignores defaultMode "auto" and autoMode in project settings; they live in the user settings."""

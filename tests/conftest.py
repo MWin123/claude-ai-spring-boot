@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 from _pytest.terminal import TerminalReporter
 
+pytest_plugins = ["install_fixtures"]
+
 ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
 type Markup = dict[str, bool]  # TerminalWriter colors, e.g. {"red": True}
 
@@ -70,14 +72,8 @@ def _patch_pretty() -> None:
 
 _patch_pretty()
 
-# -v lines without the file part (the file is the block heading), result first.
-_locationline = TerminalReporter._locationline
 PATH_LINE = re.compile(r"(.+):(\d+)")
 INDENT = " " * 7
-
-
-def _test_name(self: TerminalReporter, nodeid: str, fspath: str, lineno: int | None, domain: str) -> str:
-    return _locationline(self, nodeid, fspath, lineno, domain).split("::", 1)[-1].strip()
 
 
 def _rank(markup: Markup) -> int:  # the result's color: red (failed, error), yellow (skipped, xfail, xpass), green
@@ -199,12 +195,12 @@ class _FileBlocks:
 def pytest_configure(config: pytest.Config) -> None:
     if config.get_verbosity() < 1 or config.pluginmanager.getplugin("terminalreporter") is None:
         return
-    TerminalReporter._locationline = _test_name  # type: ignore[method-assign]
     blocks = _FileBlocks(config)
 
     def write_ensure_prefix(self: TerminalReporter, prefix: str, extra: str = "", **markup: bool) -> None:
         if extra:  # called again with the result; the call at test start writes nothing
-            blocks.result(prefix, extra.strip(), markup)
+            # the -v line without its file part (the file is the block heading)
+            blocks.result(prefix.split("::", 1)[-1].strip(), extra.strip(), markup)
 
     def wrap_write(self: TerminalReporter, content: str, **markup: Any) -> None:
         # pytest's only use: the skip reason after a result
