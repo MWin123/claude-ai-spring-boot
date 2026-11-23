@@ -28,12 +28,12 @@
   "maxEffortLevel": "xhigh",
   "fastMode": false,
   "autoCompactEnabled": true,
-  "autoCompactWindow": 750000,
+  "autoCompactWindow": 600000,
   "disableWorkflows": true,
   "ultracode": false,
   "env": {
     "CLAUDE_CODE_DISABLE_ADVISOR_TOOL": "1",
-    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "20",
-    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "3"
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "10",
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
   }
 }
